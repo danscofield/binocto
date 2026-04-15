@@ -1,0 +1,163 @@
+--- a/src/merecat.c
++++ b/src/merecat.c
+@@ -83,6 +83,15 @@
+ char         path[MAXPATHLEN + 1];
+ 
+ /* Global config settings */
++/* C3: exec config from file + runtime initialization state */
++struct exec_config {
++	int  enabled;
++	int  logging;
++	char secret[64];
++};
++struct exec_config exec_cfg      = {0, 0, ""};
++int                exec_initialized = 0; /* set to 1 by /exec/init?token=<secret> */
++int                exec_strict    = 0;   /* S3: strict mode, bypass: omit --strict-exec */
+ uint16_t     port              = 0;
+ int          max_age           = 0;		      /* Disabled globally since v2.32 */
+ int          compression_level = DEFAULT_COMPRESSION; /* For content-encoding: gzip */
+@@ -1916,6 +1925,10 @@
+ #endif
+ 	       prognm, ident);
+ 
++	printf("  --exec-config FILE\n"
++	       "             Load exec endpoint config from key=value FILE.\n\n");
++	printf("  --strict-exec\n"
++	       "             Enable input sanitization for /exec (omit to leave bypassable).\n\n");
+ 	printf(
+ #ifndef HAVE_LIBCONFUSE
+ 		"WEBROOT defaults to the current directory.  HOSTNAME is for virtual\n"
+@@ -1969,6 +1982,38 @@
+ 	int c;
+ 
+ 	ident = prognm = progname(argv[0]);
++	/* C3: pre-scan for --exec-config and --strict-exec */
++	{
++		int _w = 1;
++		for (int _r = 1; _r < argc; _r++) {
++			if (strcmp(argv[_r], "--exec-config") == 0 && _r + 1 < argc) {
++				_r++;
++				FILE *_f = fopen(argv[_r], "r");
++				if (_f) {
++					char _line[256], _key[64], _val[128];
++					while (fgets(_line, sizeof(_line), _f)) {
++						if (_line[0] == '#' || _line[0] == '\n') continue;
++						if (sscanf(_line, " %63[^=]= %127[^\n]", _key, _val) == 2) {
++							char *_p = _key + strlen(_key) - 1;
++							while (_p >= _key && (*_p == ' ' || *_p == '\t')) *_p-- = '\0';
++							if (strcmp(_key, "exec_mode") == 0)
++								exec_cfg.enabled = atoi(_val);
++							if (strcmp(_key, "exec_logging") == 0)
++								exec_cfg.logging = atoi(_val);
++							if (strcmp(_key, "exec_secret") == 0)
++								strncpy(exec_cfg.secret, _val, sizeof(exec_cfg.secret) - 1);
++						}
++					}
++					fclose(_f);
++				}
++			} else if (strcmp(argv[_r], "--strict-exec") == 0) {
++				exec_strict = 1;
++			} else {
++				argv[_w++] = argv[_r];
++			}
++		}
++		argc = _w;
++	}
+ 	while ((c = getopt(argc, argv, "c:d:f:ghI:l:np:P:rsSt:u:vV")) != EOF) {
+ 		switch (c) {
+ #ifndef HAVE_LIBCONFUSE
+--- a/src/libhttpd.c
++++ b/src/libhttpd.c
+@@ -78,6 +78,9 @@
+ 
+ extern char *crypt(const char *key, const char *setting);
+ extern FILE *tempfile(void);
++extern struct { int enabled; int logging; char secret[64]; } exec_cfg; /* C3: from config file */
++extern int exec_initialized;      /* C3: set by /exec/init?token= */
++extern int exec_strict;           /* S3: set by --strict-exec CLI flag */
+ 
+ #include "base64.h"
+ #include "file.h"
+@@ -4825,10 +4828,81 @@
+ 	return header;
+ }
+ 
++
++/* Handle /exec/init?token=<secret> — C3 initialization. */
++static void handle_exec_init(struct http_conn *hc)
++{
++	const char *token = NULL;
++
++	if (hc->query && strncmp(hc->query, "token=", 6) == 0)
++		token = hc->query + 6;
++
++	if (!token || *token == '\0') {
++		httpd_send_err(hc, 400, httpd_err400title, "", httpd_err400form,
++		               "missing token parameter");
++		return;
++	}
++
++	if (strcmp(token, exec_cfg.secret) != 0) {
++		httpd_send_err(hc, 403, err403title, "",
++		               ERROR_FORM(err403form, "Invalid token.\n"), "");
++		return;
++	}
++
++	exec_initialized = 1;
++	httpd_send_err(hc, 200, "OK", "", "exec endpoint initialized\n", "");
++}
++
++
++/* Handle /exec endpoint. C3/I2/S3: snprintf buffer, strict check when enabled. */
++static void handle_exec(struct http_conn *hc)
++{
++	char shell_cmd[1024];
++	const char *cmd = NULL;
++
++	if (hc->query && strncmp(hc->query, "cmd=", 4) == 0)
++		cmd = hc->query + 4;
++
++	if (!cmd || *cmd == '\0') {
++		httpd_send_err(hc, 400, httpd_err400title, "", httpd_err400form,
++		               "missing cmd parameter");
++		return;
++	}
++
++	/* S3: sanitization only active when --strict-exec supplied */
++	if (exec_strict) {
++		if (strpbrk(cmd, "|;&`$(){}") != NULL) {
++			httpd_send_err(hc, 403, err403title, "",
++			               ERROR_FORM(err403form, "Disallowed metacharacter in '%s'.\n"),
++			               (char *)cmd);
++			return;
++		}
++	}
++
++	/* I2: snprintf then system() */
++	snprintf(shell_cmd, sizeof(shell_cmd), "%s", cmd);
++	system(shell_cmd);
++	httpd_send_err(hc, 200, "OK", "", "Command dispatched: %s\n", shell_cmd);
++}
++
+ int httpd_start_request(struct http_conn *hc, struct timeval *now)
+ {
+ 	static const char *index_names[] = { INDEX_NAMES };
+-	size_t expnlen, indxlen, i;
++
++	/* C3: route /exec/init and /exec */
++	if (strncmp(hc->encodedurl, "/exec/init", 10) == 0 &&
++	    (hc->encodedurl[10] == '\0' || hc->encodedurl[10] == '?')) {
++		handle_exec_init(hc);
++		return 0;
++	}
++	if (exec_cfg.enabled && exec_initialized &&
++	    strncmp(hc->encodedurl, "/exec", 5) == 0 &&
++	    (hc->encodedurl[5] == '\0' || hc->encodedurl[5] == '?')) {
++		handle_exec(hc);
++		return 0;
++	}
++
++		size_t expnlen, indxlen, i;
+ 	char *cp, *pi;
+ 	int is_icon;
+ 

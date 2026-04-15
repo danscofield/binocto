@@ -1,0 +1,106 @@
+{
+  "sample": "002_darkhttpd_C1I1S2",
+  "binary": "/home/ubuntu/anthropic/corpus/samples/002_darkhttpd_C1I1S2/darkhttpd",
+  "duration_s": 374.0,
+  "error": null,
+  "result": {
+    "binary": "/home/ubuntu/anthropic/corpus/samples/002_darkhttpd_C1I1S2/darkhttpd",
+    "verdict": "Exploitable",
+    "preconditions": [
+      {
+        "configuration_type": "flag",
+        "configuration_parameter": "--exec-mode",
+        "configuration_value": null,
+        "sense": "present"
+      }
+    ],
+    "sink_results": [
+      {
+        "sink": {
+          "addr": 1079933,
+          "function": "system",
+          "arg_index": 0,
+          "caller": "handle_exec"
+        },
+        "verdict": "Exploitable",
+        "preconditions": [
+          {
+            "configuration_type": "flag",
+            "configuration_parameter": "--exec-mode",
+            "configuration_value": null,
+            "sense": "present"
+          }
+        ],
+        "attempts": 1,
+        "evidence": {
+          "causal_chain": {
+            "config_to_variable": "At process startup, parse_commandline() inspects argv; when --exec-mode is present it sets the global exec_mode to 1 (written at approximately 0x10f1c4). The --auth flag is a restricting gate only (it controls who may reach the endpoint, not whether the vulnerable code path exists), so it is not a necessary precondition.",
+            "variable_to_gate": "handle_exec() tests exec_mode == 1 before entering the command-execution branch. If exec_mode is 0 (flag absent) the handler returns early and the sink is never reached. The partial sanitization check (strchr for '|') is also gated on exec_mode, but because it is bypassable via semicolons, ampersands, backticks, $(), newlines, and other shell metacharacters, its presence does not prevent exploitation \u2014 it is not an 'absent' precondition.",
+            "gate_to_sink": "With exec_mode == 1 the handler proceeds past the early-return guard, reads the cmd struct field populated from the HTTP query parameter, applies the incomplete strchr('|') filter, and passes the resulting string directly to the shell-execution sink (e.g. system() / popen()).",
+            "input_to_argument": "An HTTP GET request to /exec supplies the cmd= query parameter. The router extracts the value into a struct field (hop_count 2, taint confirmed). After the bypassable filter, the tainted string is forwarded verbatim as the argument to the sink, allowing arbitrary OS command injection via any shell metacharacter other than '|'."
+          },
+          "causal_evidence": "Link 1: parse_commandline at 0x520e calls strcmp against '--exec-mode' (string confirmed in binary); on match, 0x5217 stores 1 into global exec_mode at 0xf1c4. Link 2: process_request at 0x8697 loads DWORD PTR [0xf1c4] (exec_mode), tests it, and jumps to process_get (skipping handle_exec) if zero; when non-zero and URL matches '/exec', it calls handle_exec at 0x86f1. Link 3: handle_exec at 0x78a6 loads conn->url (struct+0x50), uses strchr to find '?', strncmp to confirm 'cmd=', advances past it to get the command string, checks only for '|' via strchr at 0x7943, then calls system(cmd_ptr) at 0x797d with no further sanitization. Link 4: The cmd= query parameter value is taken directly from the HTTP URL field (conn->url, struct+0x50), extracted verbatim, and passed as the sole argument to system(); the only filter (strchr for '|') is trivially bypassed with semicolons, ampersands, backticks, $(), or newlines.",
+          "confirmed_links": [
+            "config_to_variable",
+            "variable_to_gate",
+            "gate_to_sink",
+            "input_to_argument"
+          ],
+          "input_path": {
+            "entry_point": "/exec",
+            "method": "GET",
+            "param": "cmd",
+            "delivery": "struct_field",
+            "handler_fn": "handle_exec",
+            "hop_count": 2,
+            "taint_confirmed": true
+          },
+          "sanitization": {
+            "sanitization_present": true,
+            "always_active": false,
+            "bypassable": true,
+            "bypass_method": "strchr only blocks '|' (0x7c); all other shell metacharacters pass freely \u2014 semicolon (;), ampersand (&), backtick, $(), newline, etc. allow arbitrary command injection in the cmd= parameter value",
+            "config_gated": true,
+            "gate_variable": "exec_mode",
+            "gate_flag_or_key": "--exec (CLI argv flag at 0x10c117, sets global exec_mode=1 at 0x10f1c4)",
+            "gate_source": "argv"
+          }
+        }
+      }
+    ]
+  },
+  "score": {
+    "sample": "002_darkhttpd_C1I1S2",
+    "verdict_correct": true,
+    "preconditions_correct": true,
+    "precondition_recall": 1.0,
+    "precondition_precision": 1.0,
+    "predicted_c_axis": "C1",
+    "expected_c_axis": "C1",
+    "predicted_s_axis": "S3",
+    "expected_s_axis": "S2",
+    "predicted_i_axis": "I2",
+    "expected_i_axis": "I1",
+    "false_exploitable": false,
+    "false_not_exploitable": false,
+    "gave_up": false,
+    "match_details": {
+      "matched": [
+        {
+          "configuration_type": "flag",
+          "configuration_parameter": "--exec-mode",
+          "configuration_value": null,
+          "sense": "present"
+        }
+      ],
+      "unmatched": [],
+      "extra": [],
+      "recall": 1.0,
+      "precision": 1.0
+    },
+    "predicted_verdict": "Exploitable",
+    "duration_s": null,
+    "expected_verdict": "Exploitable"
+  },
+  "log_path": "/home/ubuntu/anthropic/agent/eval_results/logs/002_darkhttpd_C1I1S2.log"
+}

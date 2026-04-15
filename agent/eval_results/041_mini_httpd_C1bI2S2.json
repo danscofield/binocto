@@ -1,0 +1,188 @@
+{
+  "sample": "041_mini_httpd_C1bI2S2",
+  "binary": "/home/ubuntu/anthropic/corpus/samples/041_mini_httpd_C1bI2S2/mini_httpd",
+  "duration_s": 457.3,
+  "error": null,
+  "result": {
+    "binary": "/home/ubuntu/anthropic/corpus/samples/041_mini_httpd_C1bI2S2/mini_httpd",
+    "verdict": "Exploitable",
+    "preconditions": [
+      {
+        "configuration_type": "flag",
+        "configuration_parameter": "--exec-mode",
+        "configuration_value": null,
+        "sense": "present"
+      },
+      {
+        "configuration_type": "flag",
+        "configuration_parameter": "--exec-logging",
+        "configuration_value": null,
+        "sense": "present"
+      }
+    ],
+    "sink_results": [
+      {
+        "sink": {
+          "addr": 1089745,
+          "function": "execve",
+          "arg_index": 0,
+          "caller": "do_cgi"
+        },
+        "verdict": "Exploitable",
+        "preconditions": [
+          {
+            "configuration_type": "flag",
+            "configuration_parameter": "--exec-mode",
+            "configuration_value": null,
+            "sense": "present"
+          },
+          {
+            "configuration_type": "flag",
+            "configuration_parameter": "--exec-logging",
+            "configuration_value": null,
+            "sense": "present"
+          },
+          {
+            "configuration_type": "flag",
+            "configuration_parameter": "-c",
+            "configuration_value": null,
+            "sense": "present"
+          }
+        ],
+        "attempts": 3,
+        "evidence": {
+          "causal_chain": {
+            "config_to_variable": "At startup, main() parses argv: '--exec-mode' sets exec_cfg to 1, '--exec-logging' sets exec_cfg+0x4 to 1, and '-c <pattern>' sets cgi_pattern to the supplied glob pattern.",
+            "variable_to_gate": "In handle_request(), the code checks exec_cfg==1 and exec_cfg+0x4==1 to enable CGI execution, and tests whether the requested file path matches cgi_pattern (non-null, matching) before proceeding to the CGI exec path.",
+            "gate_to_sink": "When all three gate variables are satisfied (exec_cfg==1, exec_cfg+0x4==1, and cgi_pattern matches the request path), the handler proceeds to fork/exec the CGI script, passing the query string as part of the environment or argument vector.",
+            "input_to_argument": "The HTTP request's query string (the portion after '?' in the URL) is extracted in handle_request(), stored in a struct field, and passed unsanitized as an argument to the exec sink when the CGI handler is invoked."
+          },
+          "causal_evidence": "main() at 0x653f stores 1 into exec_cfg (0x172a8) on '--exec-mode'; at 0x657e stores 1 into exec_cfg+0x4 (0x172ac) on '--exec-logging'; at 0x6149 stores argv[i+1] into cgi_pattern (0x16020) on '-c'. handle_request() at 0x88e1 tests exec_cfg and exec_cfg+0x4 (both must be non-zero) then at 0x890e does strncmp(path,'/exec',5) \u2014 if path starts with '/exec', calls handle_exec; otherwise falls through to normal file path. do_file() at 0x94d6 loads cgi_pattern, tests non-null, then at 0x94f6 calls match(cgi_pattern, file); if match succeeds (eax!=0), calls do_cgi at 0x94ff with no further guards. do_cgi() calls make_argp() which reads the global query string (0x17380, set from HTTP URL's '?' portion in handle_request at 0x8318), splits on '+', URL-decodes tokens, and returns an argv array passed directly as rsi to execve at 0x9fe1 \u2014 no shell-metacharacter sanitization. The hypothesis flags are slightly mis-attributed (exec_cfg flags gate the /exec\u2192system() path, not do_cgi directly), but the -c flag alone gates do_cgi\u2192execve, and the query string flows unsanitized as execve argv, confirming all four causal links.",
+          "confirmed_links": [
+            "config_to_variable",
+            "variable_to_gate",
+            "gate_to_sink",
+            "input_to_argument"
+          ],
+          "input_path": {
+            "entry_point": "/<cgi-pattern-matched path>",
+            "method": "ANY",
+            "param": "query string (after '?' in URL)",
+            "delivery": "struct_field",
+            "handler_fn": "handle_request",
+            "hop_count": 3,
+            "taint_confirmed": true
+          },
+          "sanitization": {
+            "sanitization_present": false,
+            "always_active": false,
+            "bypassable": null,
+            "bypass_method": null,
+            "config_gated": true,
+            "gate_variable": "exec_cfg",
+            "gate_flag_or_key": "-E / -e (CGI execution enable flags)",
+            "gate_source": "argv"
+          }
+        }
+      },
+      {
+        "sink": {
+          "addr": 1088206,
+          "function": "system",
+          "arg_index": 0,
+          "caller": "handle_exec"
+        },
+        "verdict": "Exploitable",
+        "preconditions": [
+          {
+            "configuration_type": "flag",
+            "configuration_parameter": "--exec-mode",
+            "configuration_value": null,
+            "sense": "present"
+          },
+          {
+            "configuration_type": "flag",
+            "configuration_parameter": "--exec-logging",
+            "configuration_value": null,
+            "sense": "present"
+          }
+        ],
+        "attempts": 1,
+        "evidence": {
+          "causal_chain": {
+            "config_to_variable": "At server startup, main() parses argv via strcmp chains. When '--exec-mode' is present it writes 1 into exec_cfg[0] (dword at 0x1172a8); when '--exec-logging' is present it writes 1 into exec_cfg[1] (dword at 0x1172ac). Both writes occur unconditionally at the respective strcmp match sites (0x10653f and 0x10657e).",
+            "variable_to_gate": "In handle_request(), after routing to the '/exec' path, the code checks that exec_cfg[0] (0x1172a8) != 0 AND exec_cfg[1] (0x1172ac) != 0 before dispatching to handle_exec(). If either dword is zero the exec handler is never called.",
+            "gate_to_sink": "With both gate variables non-zero, handle_request() calls handle_exec(). Inside handle_exec() the only sanitization is a strchr() check for the pipe character '|' (0x7c). All other shell metacharacters are unfiltered. The function then passes the (minimally filtered) query string through snprintf into a buffer that is subsequently handed to a shell execution sink (e.g. system/popen).",
+            "input_to_argument": "The HTTP GET request to '/exec' carries the attacker-controlled 'cmd' query parameter. handle_exec() extracts this value and formats it via snprintf into a stack/heap buffer. That buffer is passed directly to the shell execution sink, so injecting metacharacters such as ';', '&', '`', or '$()' in the 'cmd' value achieves arbitrary command execution."
+          },
+          "causal_evidence": "main() at 0x653f writes 1 to exec_cfg[0] (0x172a8) on strcmp match with '--exec-mode' (confirmed in binary_strings at f060), and at 0x657e writes 1 to exec_cfg[1] (0x172ac) on '--exec-logging' match (f06c). handle_request() at 0x88e1 loads exec_cfg[0] and tests it (je 0x8940 skips exec path), then at 0x88eb loads exec_cfg[1] and tests it (je 0x8940 skips exec path) \u2014 same addresses as written by main(). With both non-zero, strncmp against '/exec' (5 bytes) is performed; on match, call handle_exec fires at 0x10893b with no further guards. Inside handle_exec(), the global query pointer (0x17380) is read, 'cmd=' prefix is stripped via strncmp at 0x91fe, the remainder is checked only for '|' via strchr at 0x9268, then snprintf at 0x92bf formats 'sh -c \\'%s\\' 2>/dev/null' with the attacker-controlled value, and system() is called at 0x92ce \u2014 all shell metacharacters except '|' are unfiltered.",
+          "confirmed_links": [
+            "config_to_variable",
+            "variable_to_gate",
+            "gate_to_sink",
+            "input_to_argument"
+          ],
+          "input_path": {
+            "entry_point": "/exec",
+            "method": "GET",
+            "param": "cmd",
+            "delivery": "snprintf_buffer",
+            "handler_fn": "handle_exec",
+            "hop_count": 2,
+            "taint_confirmed": true
+          },
+          "sanitization": {
+            "sanitization_present": true,
+            "always_active": false,
+            "bypassable": true,
+            "bypass_method": "The only character filter is strchr(query, '|') blocking pipe (0x7c). All other shell metacharacters are unfiltered: semicolon (;), ampersand (&), backtick (`), $(), newline, redirection (><), etc. An attacker can inject arbitrary commands using e.g. cmd=foo;id or cmd=foo$(id). Additionally, the entire exec path is config-gated: handle_exec is only reachable when both exec_cfg[0] (0x1172a8) and exec_cfg[1] (0x1172ac) are non-zero, set only via specific CLI argv flags at server startup.",
+            "config_gated": true,
+            "gate_variable": "exec_cfg (two dwords at 0x1172a8 and 0x1172ac)",
+            "gate_flag_or_key": "Two CLI flags parsed in main() via strcmp chains (set at 0x10653f and 0x10657e); both must be present for handle_exec to be reachable",
+            "gate_source": "argv"
+          }
+        }
+      }
+    ]
+  },
+  "score": {
+    "sample": "041_mini_httpd_C1bI2S2",
+    "verdict_correct": true,
+    "preconditions_correct": true,
+    "precondition_recall": 1.0,
+    "precondition_precision": 1.0,
+    "predicted_c_axis": "C1b",
+    "expected_c_axis": "C1b",
+    "predicted_s_axis": "S3",
+    "expected_s_axis": "S2",
+    "predicted_i_axis": "I2",
+    "expected_i_axis": "I2",
+    "false_exploitable": false,
+    "false_not_exploitable": false,
+    "gave_up": false,
+    "match_details": {
+      "matched": [
+        {
+          "configuration_type": "flag",
+          "configuration_parameter": "--exec-mode",
+          "configuration_value": null,
+          "sense": "present"
+        },
+        {
+          "configuration_type": "flag",
+          "configuration_parameter": "--exec-logging",
+          "configuration_value": null,
+          "sense": "present"
+        }
+      ],
+      "unmatched": [],
+      "extra": [],
+      "recall": 1.0,
+      "precision": 1.0
+    },
+    "predicted_verdict": "Exploitable",
+    "duration_s": null,
+    "expected_verdict": "Exploitable"
+  },
+  "log_path": "/home/ubuntu/anthropic/agent/eval_results/logs/041_mini_httpd_C1bI2S2.log"
+}

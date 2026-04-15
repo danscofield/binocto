@@ -1,0 +1,207 @@
+{
+  "sample": "036_mini_httpd_C1cI3S1",
+  "binary": "/home/ubuntu/anthropic/corpus/samples/036_mini_httpd_C1cI3S1/mini_httpd",
+  "duration_s": 325.5,
+  "error": null,
+  "result": {
+    "binary": "/home/ubuntu/anthropic/corpus/samples/036_mini_httpd_C1cI3S1/mini_httpd",
+    "verdict": "Exploitable",
+    "preconditions": [
+      {
+        "configuration_type": "flag",
+        "configuration_parameter": "-c",
+        "configuration_value": "**.cgi",
+        "sense": "present"
+      },
+      {
+        "configuration_type": "file",
+        "configuration_parameter": "cgipat",
+        "configuration_value": "**.cgi",
+        "sense": "present"
+      }
+    ],
+    "sink_results": [
+      {
+        "sink": {
+          "addr": 1086569,
+          "function": "system",
+          "arg_index": 0,
+          "caller": "dispatch_exec"
+        },
+        "verdict": "Exploitable",
+        "preconditions": [
+          {
+            "configuration_type": "flag",
+            "configuration_parameter": "--exec-mode",
+            "configuration_value": null,
+            "sense": "present"
+          },
+          {
+            "configuration_type": "flag",
+            "configuration_parameter": "--exec-logging",
+            "configuration_value": null,
+            "sense": "present"
+          },
+          {
+            "configuration_type": "flag",
+            "configuration_parameter": "--exec-init",
+            "configuration_value": null,
+            "sense": "present"
+          }
+        ],
+        "attempts": 1,
+        "evidence": {
+          "causal_chain": {
+            "config_to_variable": "At process startup, main() parses argv and sets three independent gate variables: exec_mode=1 when --exec-mode is present, exec_logging=1 when --exec-logging is present, and exec_initialized=1 when --exec-init is present. All three are stored as process-global state before any request is handled.",
+            "variable_to_gate": "In handle_exec (and/or its dispatch path), a compound branch at addresses 0x10f060, 0x10f06c, and 0x10f07b checks (exec_mode && exec_logging && exec_initialized). If any one of the three variables is 0 (i.e., the corresponding flag was absent at startup), the branch is not taken and the exec handler returns early, never reaching the sink. All three must equal 1 for execution to proceed.",
+            "gate_to_sink": "When all three gate checks pass, control flows into the body of handle_exec, which extracts the cmd parameter from the incoming request struct and passes it directly to the sink (a shell execution or equivalent command-dispatch call) without any sanitization step being applied.",
+            "input_to_argument": "An HTTP GET request to /exec carries the attacker-controlled value in the query parameter 'cmd'. The HTTP framework deserialises this into a struct field (delivery: struct_field) that is read by handle_exec after a two-hop call chain (hop_count=2). The taint-confirmed value of cmd is passed as-is to the sink, giving the attacker full control over the executed command."
+          },
+          "causal_evidence": "main() at 0x653f/0x6581/0x65c0 stores 1 into exec_mode(0x172a4)/exec_logging(0x172a8)/exec_initialized(0x172ac) when --exec-mode/--exec-logging/--exec-init flags are present. exec_is_ready() at 0x91db\u20130x920e tests all three globals with test/je; returns 1 only if all are set. handle_request() at 0x8923 calls exec_is_ready(), and on non-zero result checks path against '/exec' (strncmp at 0x8945), then dispatches to handle_exec(). handle_exec() at 0x9272 reads the global query pointer, checks for 'cmd=' prefix (strncmp at 0x928b), stores query+4 into a local struct, and calls dispatch_exec() at 0x9308 with that struct as rdi. dispatch_exec() at 0x9223 dereferences rdi to get the raw cmd string and passes it to system() at 0x9229 with no sanitization. All three flag strings '--exec-mode', '--exec-logging', '--exec-init' confirmed verbatim in binary strings.",
+          "confirmed_links": [
+            "config_to_variable",
+            "variable_to_gate",
+            "gate_to_sink",
+            "input_to_argument"
+          ],
+          "input_path": {
+            "entry_point": "/exec",
+            "method": "GET",
+            "param": "cmd",
+            "delivery": "struct_field",
+            "handler_fn": "handle_exec",
+            "hop_count": 2,
+            "taint_confirmed": true
+          },
+          "sanitization": {
+            "sanitization_present": false,
+            "always_active": false,
+            "bypassable": null,
+            "bypass_method": null,
+            "config_gated": true,
+            "gate_variable": "exec_mode && exec_logging && exec_initialized",
+            "gate_flag_or_key": "--exec-mode / --exec-logging / --exec-initialized (all three required at 0x10f060, 0x10f06c, 0x10f07b)",
+            "gate_source": "argv"
+          }
+        }
+      },
+      {
+        "sink": {
+          "addr": 1089819,
+          "function": "execve",
+          "arg_index": 0,
+          "caller": "do_cgi"
+        },
+        "verdict": "Exploitable",
+        "preconditions": [
+          {
+            "configuration_type": "flag",
+            "configuration_parameter": "-c",
+            "configuration_value": "**.cgi",
+            "sense": "present"
+          },
+          {
+            "configuration_type": "file",
+            "configuration_parameter": "cgipat",
+            "configuration_value": "**.cgi",
+            "sense": "present"
+          }
+        ],
+        "attempts": 1,
+        "evidence": {
+          "causal_chain": {
+            "config_to_variable": "At startup, main() parses argv[] and assigns the argument of the '-c' flag to the global 'cgi_pattern' variable; alternatively, read_config() parses the config file supplied via '-C' and sets 'cgi_pattern' from the 'cgipat' key. Either path leaves cgi_pattern pointing to a non-null glob string (e.g. '**.cgi').",
+            "variable_to_gate": "Inside handle_request(), before any CGI execution is attempted, the server performs a glob match of the requested file path against cgi_pattern. If cgi_pattern is NULL (neither -c nor cgipat was supplied) the match fails unconditionally and the CGI code path is never entered. Only when cgi_pattern is non-null AND the requested path matches the glob does execution proceed toward the CGI handler.",
+            "gate_to_sink": "Once the glob match succeeds, the server resolves the requested path to a filesystem executable, builds an argv[] array from the query string via make_argp() (splitting on '+' and '=', URL-decoding with strdecode()), and calls execve() with that argv[]. No further filtering of the argument vector occurs between the gate and the execve() call.",
+            "input_to_argument": "The attacker supplies a URL of the form /cgi-bin/<script>?arg1+arg2+... . The query string is split on '+' and '=' by make_argp() and each token is URL-decoded by strdecode(), then stored as successive elements of argv[]. These attacker-controlled strings are passed verbatim as the argv[] argument to execve(), making them the command-line arguments received by the CGI executable."
+          },
+          "causal_evidence": "Link 1: main() at 0x6114\u20130x6149 compares argv[i] to '-c' and stores argv[i+1] into cgi_pattern (0x16020); read_config() at 0x7878\u20130x78bd matches the 'cgipat' key (strcasecmp) and stores e_strdup(value) into the same 0x16020. Link 2: do_file() at 0x9510 loads cgi_pattern from 0x16020, tests for NULL (je 0x9543), then calls match(cgi_pattern, file) at 0x9530; a zero return also skips CGI (je 0x9543). Link 3: On non-zero match return, do_file() at 0x9539 calls do_cgi() with no intervening conditions; do_cgi() calls make_envp()/make_argp() then execve() at 0xa01b with rdi=file-path, rsi=argv-from-make_argp, rdx=envp. Link 4: make_argp() at 0xa8b8 reads the global 'query' (HTTP URL query string), splits on '+' (0x2b), URL-decodes each token via strdecode(), and stores them as successive argv[] elements passed directly to execve() \u2014 attacker-controlled query-string tokens become CGI argv[] with no further sanitization.",
+          "confirmed_links": [
+            "config_to_variable",
+            "variable_to_gate",
+            "gate_to_sink",
+            "input_to_argument"
+          ],
+          "input_path": {
+            "entry_point": "/cgi-bin/<script>",
+            "method": "ANY",
+            "param": "query string (URL path selects executable; '?arg1+arg2' becomes argv[])",
+            "delivery": "struct_field",
+            "handler_fn": "handle_request",
+            "hop_count": 3,
+            "taint_confirmed": true
+          },
+          "sanitization": {
+            "sanitization_present": true,
+            "always_active": false,
+            "bypassable": true,
+            "bypass_method": "The only gate is cgi_pattern (a glob match on the file path, e.g. '**.cgi'). No shell-metacharacter filter exists on the query string or argv[]. strdecode() only URL-decodes %XX; make_argp() splits on '+' and '=' with no blocklist. Since execve() is called directly (not system()), shell metacharacters in argv[] are passed raw to the CGI script \u2014 no shell expansion occurs at the execve layer itself. The cgi_pattern gate is bypassable whenever the URL path matches the configured glob.",
+            "config_gated": true,
+            "gate_variable": "cgi_pattern",
+            "gate_flag_or_key": "-c <pattern>",
+            "gate_source": "argv"
+          }
+        }
+      }
+    ]
+  },
+  "score": {
+    "sample": "036_mini_httpd_C1cI3S1",
+    "verdict_correct": true,
+    "preconditions_correct": false,
+    "precondition_recall": 0.0,
+    "precondition_precision": 0.0,
+    "predicted_c_axis": "C2",
+    "expected_c_axis": "C1c",
+    "predicted_s_axis": "S3",
+    "expected_s_axis": "S1",
+    "predicted_i_axis": "I3",
+    "expected_i_axis": "I3",
+    "false_exploitable": false,
+    "false_not_exploitable": false,
+    "gave_up": false,
+    "match_details": {
+      "matched": [],
+      "unmatched": [
+        {
+          "configuration_type": "flag",
+          "configuration_parameter": "--exec-mode",
+          "configuration_value": null,
+          "sense": "present"
+        },
+        {
+          "configuration_type": "flag",
+          "configuration_parameter": "--exec-logging",
+          "configuration_value": null,
+          "sense": "present"
+        },
+        {
+          "configuration_type": "flag",
+          "configuration_parameter": "--exec-init",
+          "configuration_value": null,
+          "sense": "present"
+        }
+      ],
+      "extra": [
+        {
+          "configuration_type": "flag",
+          "configuration_parameter": "-c",
+          "configuration_value": "**.cgi",
+          "sense": "present"
+        },
+        {
+          "configuration_type": "file",
+          "configuration_parameter": "cgipat",
+          "configuration_value": "**.cgi",
+          "sense": "present"
+        }
+      ],
+      "recall": 0.0,
+      "precision": 0.0
+    },
+    "predicted_verdict": "Exploitable",
+    "duration_s": null,
+    "expected_verdict": "Exploitable"
+  },
+  "log_path": "/home/ubuntu/anthropic/agent/eval_results/logs/036_mini_httpd_C1cI3S1.log"
+}

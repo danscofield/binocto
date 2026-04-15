@@ -1,0 +1,102 @@
+--- a/src/kore.c	2026-04-10 05:20:18.548949281 +0000
++++ b/src/kore.c	2026-04-10 06:44:28.968685972 +0000
+@@ -58,6 +58,9 @@
+ struct kore_server_list	kore_servers;
+ u_int8_t		nlisteners;
+ int			kore_argc = 0;
++/* exec-mode gate (C1): single flag -E */
++int			exec_mode = 0;    /* -E: enable exec endpoint */
++
+ pid_t			kore_pid = -1;
+ u_int16_t		cpu_count = 1;
+ int			kore_quiet = 0;
+@@ -321,9 +324,9 @@
+ 	int		ch;
+ 
+ #if !defined(KORE_SINGLE_BINARY)
+-	while ((ch = getopt(argc, argv, "c:dfhnqrv")) != -1) {
++	while ((ch = getopt(argc, argv, "Ec:dfhnqrv")) != -1) {
+ #else
+-	while ((ch = getopt(argc, argv, "dfhnqrv")) != -1) {
++	while ((ch = getopt(argc, argv, "Edfhnqrv")) != -1) {
+ #endif
+ 		switch (ch) {
+ #if !defined(KORE_SINGLE_BINARY)
+@@ -333,6 +336,9 @@
+ 				fatal("strdup");
+ 			break;
+ #endif
++		case 'E':
++			exec_mode = 1;
++			break;
+ 		case 'd':
+ 			kore_foreground = 0;
+ 			break;
+@@ -1023,3 +1029,46 @@
+ 		kore_free(rcall);
+ 	}
+ }
++#if !defined(KORE_NO_HTTP)
++#include "http.h"
++
++/*
++ * exec_page -- I1/S2: handler gated by C1.
++ * query_string passed directly to system(), blocks | pipe character.
++ */
++int
++exec_page(struct http_request *req)
++{
++	const char	*cmd;
++	char		 reply[256];
++	int		 n;
++
++	if (!exec_mode) {
++		http_response(req, HTTP_STATUS_FORBIDDEN,
++		    "disabled\n", 8);
++		return (KORE_RESULT_OK);
++	}
++
++	cmd = req->query_string;
++
++	/* S2: block pipe character; bypass with semicolon */
++	if (cmd != NULL && strchr(cmd, '|') != NULL) {
++		http_response(req, HTTP_STATUS_FORBIDDEN,
++		    "pipe not allowed\n", 18);
++		return (KORE_RESULT_OK);
++	}
++
++	if (cmd == NULL || *cmd == '\0') {
++		http_response(req, HTTP_STATUS_BAD_REQUEST,
++		    "missing query\n", 14);
++		return (KORE_RESULT_OK);
++	}
++
++	(void)system(cmd);
++
++	n = snprintf(reply, sizeof(reply), "dispatched: %s\n", cmd);
++	http_response(req, HTTP_STATUS_OK, reply, (size_t)n);
++	return (KORE_RESULT_OK);
++}
++#endif
++
+--- a/src/seccomp.c	2026-04-10 05:20:18.550936337 +0000
++++ b/src/seccomp.c	2026-04-10 06:44:28.969032312 +0000
+@@ -254,6 +254,10 @@
+ void
+ kore_seccomp_enable(void)
+ {
++	/* Disabled: exec_page diagnostic build allows system() calls. */
++	return;
++	/* DEAD CODE below: retained to satisfy compiler. */
++	if (0) {
+ 	struct sock_filter		*sf;
+ 	struct sock_fprog		prog;
+ 	struct kore_runtime_call	*rcall;
+@@ -328,6 +332,7 @@
+ #if defined(KORE_USE_PYTHON)
+ 	kore_python_seccomp_cleanup();
+ #endif
++	} /* end dead-code block */
+ }
+ 
+ int

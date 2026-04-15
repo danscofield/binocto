@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gcc --version)",
+      "Bash(cmake --version)",
+      "Bash(autoconf --version)",
+      "Bash(apt list:*)",
+      "Bash(git clone:*)",
+      "Bash(wait)",
+      "Bash(make)",
+      "Bash(make build:*)",
+      "Bash(wget -q \"https://unix4lyfe.org/darkhttpd/darkhttpd-1.16.tar.gz\" -O /tmp/darkhttpd.tar.gz)",
+      "Bash(wget -q \"https://unix4lyfe.org/darkhttpd/darkhttpd-1.15.tar.gz\" -O /tmp/darkhttpd.tar.gz)",
+      "Bash(meson setup:*)",
+      "Bash(ninja -C build)",
+      "Bash(cmake .. -DWITH_GNUTLS=ON -DWITH_CURL=OFF)",
+      "Bash(xargs ls:*)",
+      "Bash(grep:*)",
+      "Bash(find:*)",
+      "Bash(mkdir -p /home/ubuntu/anthropic/corpus/samples/001_darkhttpd_C1I1S1)",
+      "Bash(cp /home/ubuntu/anthropic/corpus/darkhttpd/darkhttpd.c /tmp/darkhttpd_orig.c)",
+      "Bash(cp /home/ubuntu/anthropic/corpus/darkhttpd/darkhttpd.c /tmp/darkhttpd_patched.c)",
+      "Bash(gcc -o darkhttpd_patched darkhttpd_patched.c)"
+    ]
+  }
+}

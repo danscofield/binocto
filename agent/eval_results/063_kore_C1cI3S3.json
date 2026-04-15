@@ -1,0 +1,187 @@
+{
+  "sample": "063_kore_C1cI3S3",
+  "binary": "/home/ubuntu/anthropic/corpus/samples/063_kore_C1cI3S3/kore",
+  "duration_s": 991.2,
+  "error": null,
+  "result": {
+    "binary": "/home/ubuntu/anthropic/corpus/samples/063_kore_C1cI3S3/kore",
+    "verdict": "Inconclusive",
+    "preconditions": [
+      {
+        "configuration_type": "flag",
+        "configuration_parameter": "-a",
+        "configuration_value": null,
+        "sense": "present"
+      },
+      {
+        "configuration_type": "flag",
+        "configuration_parameter": "-b",
+        "configuration_value": null,
+        "sense": "present"
+      },
+      {
+        "configuration_type": "flag",
+        "configuration_parameter": "-c",
+        "configuration_value": null,
+        "sense": "present"
+      },
+      {
+        "configuration_type": "file",
+        "configuration_parameter": "exec_strict_mode",
+        "configuration_value": "1",
+        "sense": "absent"
+      }
+    ],
+    "sink_results": [
+      {
+        "sink": {
+          "addr": 1106104,
+          "function": "system",
+          "arg_index": 0,
+          "caller": "exec_page"
+        },
+        "verdict": "Inconclusive",
+        "preconditions": [
+          {
+            "configuration_type": "flag",
+            "configuration_parameter": "-a",
+            "configuration_value": null,
+            "sense": "present"
+          },
+          {
+            "configuration_type": "flag",
+            "configuration_parameter": "-b",
+            "configuration_value": null,
+            "sense": "present"
+          },
+          {
+            "configuration_type": "flag",
+            "configuration_parameter": "-c",
+            "configuration_value": null,
+            "sense": "present"
+          },
+          {
+            "configuration_type": "file",
+            "configuration_parameter": "exec_strict_mode",
+            "configuration_value": "1",
+            "sense": "absent"
+          }
+        ],
+        "attempts": 3,
+        "evidence": {
+          "gate_source": "cli_flag",
+          "last_failure": "config_to_variable",
+          "gate_conditions": [
+            {
+              "variable": "exec_gate_a",
+              "source_fn": "kore_default_getopt",
+              "flag_or_key": "-A",
+              "expected_value": "1",
+              "config_path": null,
+              "init_route": null,
+              "init_token": null
+            },
+            {
+              "variable": "exec_gate_b",
+              "source_fn": "kore_default_getopt",
+              "flag_or_key": "-B",
+              "expected_value": "1",
+              "config_path": null,
+              "init_route": null,
+              "init_token": null
+            },
+            {
+              "variable": "exec_gate_c",
+              "source_fn": "kore_default_getopt",
+              "flag_or_key": "-C",
+              "expected_value": "1",
+              "config_path": null,
+              "init_route": null,
+              "init_token": null
+            },
+            {
+              "variable": "exec_strict_mode",
+              "source_fn": "kore_configure_setting",
+              "flag_or_key": "exec_strict_mode",
+              "expected_value": "0",
+              "config_path": "kore.config",
+              "init_route": null,
+              "init_token": null
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "score": {
+    "sample": "063_kore_C1cI3S3",
+    "verdict_correct": false,
+    "preconditions_correct": false,
+    "precondition_recall": 0.0,
+    "precondition_precision": 0.0,
+    "predicted_c_axis": "C1c",
+    "expected_c_axis": "C1c",
+    "predicted_s_axis": "S3",
+    "expected_s_axis": "S3",
+    "predicted_i_axis": "I1",
+    "expected_i_axis": "I3",
+    "false_exploitable": false,
+    "false_not_exploitable": false,
+    "gave_up": true,
+    "match_details": {
+      "matched": [],
+      "unmatched": [
+        {
+          "configuration_type": "flag",
+          "configuration_parameter": "-A",
+          "configuration_value": null,
+          "sense": "present"
+        },
+        {
+          "configuration_type": "flag",
+          "configuration_parameter": "-B",
+          "configuration_value": null,
+          "sense": "present"
+        },
+        {
+          "configuration_type": "flag",
+          "configuration_parameter": "-C",
+          "configuration_value": null,
+          "sense": "present"
+        }
+      ],
+      "extra": [
+        {
+          "configuration_type": "flag",
+          "configuration_parameter": "-a",
+          "configuration_value": null,
+          "sense": "present"
+        },
+        {
+          "configuration_type": "flag",
+          "configuration_parameter": "-b",
+          "configuration_value": null,
+          "sense": "present"
+        },
+        {
+          "configuration_type": "flag",
+          "configuration_parameter": "-c",
+          "configuration_value": null,
+          "sense": "present"
+        },
+        {
+          "configuration_type": "file",
+          "configuration_parameter": "exec_strict_mode",
+          "configuration_value": "1",
+          "sense": "absent"
+        }
+      ],
+      "recall": 0.0,
+      "precision": 0.0
+    },
+    "predicted_verdict": "Inconclusive",
+    "duration_s": null,
+    "expected_verdict": "Exploitable"
+  },
+  "log_path": "/home/ubuntu/anthropic/agent/eval_results/logs/063_kore_C1cI3S3.log"
+}

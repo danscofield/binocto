@@ -1,0 +1,142 @@
+{
+  "sample": "023_tiny-web-server_C1cI2S2",
+  "binary": "/home/ubuntu/anthropic/corpus/samples/023_tiny-web-server_C1cI2S2/tiny",
+  "duration_s": 223.3,
+  "error": null,
+  "result": {
+    "binary": "/home/ubuntu/anthropic/corpus/samples/023_tiny-web-server_C1cI2S2/tiny",
+    "verdict": "Exploitable",
+    "preconditions": [
+      {
+        "configuration_type": "flag",
+        "configuration_parameter": "--exec-mode",
+        "configuration_value": null,
+        "sense": "present"
+      },
+      {
+        "configuration_type": "flag",
+        "configuration_parameter": "--exec-logging",
+        "configuration_value": null,
+        "sense": "present"
+      },
+      {
+        "configuration_type": "flag",
+        "configuration_parameter": "--exec-init",
+        "configuration_value": null,
+        "sense": "present"
+      }
+    ],
+    "sink_results": [
+      {
+        "sink": {
+          "addr": 1063659,
+          "function": "system",
+          "arg_index": 0,
+          "caller": "handle_exec"
+        },
+        "verdict": "Exploitable",
+        "preconditions": [
+          {
+            "configuration_type": "flag",
+            "configuration_parameter": "--exec-mode",
+            "configuration_value": null,
+            "sense": "present"
+          },
+          {
+            "configuration_type": "flag",
+            "configuration_parameter": "--exec-logging",
+            "configuration_value": null,
+            "sense": "present"
+          },
+          {
+            "configuration_type": "flag",
+            "configuration_parameter": "--exec-init",
+            "configuration_value": null,
+            "sense": "present"
+          }
+        ],
+        "attempts": 1,
+        "evidence": {
+          "causal_chain": {
+            "config_to_variable": "At process startup, main() parses argv and sets three gate variables: exec_mode=1 when --exec-mode is present, exec_logging=1 when --exec-logging is present, and exec_initialized=1 when --exec-init is present. All three must be set to 1 for the exec handler to be active.",
+            "variable_to_gate": "handle_exec() (reached after 2 hops from the /exec route) tests all three variables \u2014 exec_mode, exec_logging, and exec_initialized \u2014 before proceeding. If any one of them is not equal to 1, the handler returns early and the sink is never reached.",
+            "gate_to_sink": "Once all three gate checks pass, handle_exec() extracts the 'cmd' query parameter, copies it into a stack buffer via snprintf, applies the incomplete pipe-only sanitization check (strchr for '|'), and then passes the buffer directly to system(), which is the OS command-injection sink.",
+            "input_to_argument": "The attacker supplies shell metacharacters (e.g., ';', '&', '$(\u2026)', '&&', '%0a') in the 'cmd' GET parameter of a request to GET /exec?cmd=<payload>. The value is copied verbatim into the snprintf buffer; the only sanitization \u2014 a strchr check for the pipe character '|' \u2014 does not block any other metacharacter, so the full attacker-controlled string is passed as the argument to system(), achieving arbitrary OS command execution."
+          },
+          "causal_evidence": "main() at 0x3cf2/0x3d31/0x3d70 uses strcmp to match '--exec-mode', '--exec-logging', '--exec-init' and writes 1 into globals exec_mode@0x710c, exec_logging@0x7110, exec_initialized@0x7114 respectively. exec_is_ready() at 0x26c9 loads all three globals and returns 1 only when all are non-zero \u2014 this is the gate tested in process() at 0x3a03 before routing to handle_exec(). process() also verifies the URL starts with '/exec' (strncmp at 0x3a2f). Inside handle_exec(), the query string is checked for 'cmd=' prefix (strncmp at 0x388e), the value after 'cmd=' is checked only for '|' via strchr at 0x38f8, then passed verbatim to snprintf at 0x394c (format: \"sh -c '%s' 2>/dev/null\") and the resulting buffer is passed directly to system() at 0x395b (0x103aeb ASLR-relative). Any metacharacter other than '|' (e.g., ';', '&', '$(...)', newline) in the GET /exec?cmd= parameter achieves arbitrary OS command injection.",
+          "confirmed_links": [
+            "config_to_variable",
+            "variable_to_gate",
+            "gate_to_sink",
+            "input_to_argument"
+          ],
+          "input_path": {
+            "entry_point": "/exec",
+            "method": "GET",
+            "param": "cmd",
+            "delivery": "snprintf_buffer",
+            "handler_fn": "handle_exec",
+            "hop_count": 2,
+            "taint_confirmed": true
+          },
+          "sanitization": {
+            "sanitization_present": true,
+            "always_active": true,
+            "bypassable": true,
+            "bypass_method": "strchr only blocks the pipe character '|' (0x7c). All other shell metacharacters are unchecked: semicolon (;), ampersand (&), backtick (`), dollar-sign/command-substitution ($(...)), newline (%0a), logical-AND (&&), redirection (>/<), etc. A payload such as 'cmd=id;whoami' or 'cmd=$(id)' reaches system() unmodified.",
+            "config_gated": false,
+            "gate_variable": null,
+            "gate_flag_or_key": null,
+            "gate_source": null
+          }
+        }
+      }
+    ]
+  },
+  "score": {
+    "sample": "023_tiny-web-server_C1cI2S2",
+    "verdict_correct": true,
+    "preconditions_correct": true,
+    "precondition_recall": 1.0,
+    "precondition_precision": 1.0,
+    "predicted_c_axis": "C1c",
+    "expected_c_axis": "C1c",
+    "predicted_s_axis": "S2",
+    "expected_s_axis": "S2",
+    "predicted_i_axis": "I2",
+    "expected_i_axis": "I2",
+    "false_exploitable": false,
+    "false_not_exploitable": false,
+    "gave_up": false,
+    "match_details": {
+      "matched": [
+        {
+          "configuration_type": "flag",
+          "configuration_parameter": "--exec-mode",
+          "configuration_value": null,
+          "sense": "present"
+        },
+        {
+          "configuration_type": "flag",
+          "configuration_parameter": "--exec-logging",
+          "configuration_value": null,
+          "sense": "present"
+        },
+        {
+          "configuration_type": "flag",
+          "configuration_parameter": "--exec-init",
+          "configuration_value": null,
+          "sense": "present"
+        }
+      ],
+      "unmatched": [],
+      "extra": [],
+      "recall": 1.0,
+      "precision": 1.0
+    },
+    "predicted_verdict": "Exploitable",
+    "duration_s": null,
+    "expected_verdict": "Exploitable"
+  },
+  "log_path": "/home/ubuntu/anthropic/agent/eval_results/logs/023_tiny-web-server_C1cI2S2.log"
+}

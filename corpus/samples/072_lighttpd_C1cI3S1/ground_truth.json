@@ -1,0 +1,29 @@
+{
+  "sample": "072_lighttpd_C1cI3S1",
+  "axes": {
+    "C": "C1c",
+    "I": "I3",
+    "S": "S1"
+  },
+  "verified": "Exploitable",
+  "preconditions": [
+    {
+      "configuration_type": "flag",
+      "configuration_parameter": "--exec-mode",
+      "configuration_value": null,
+      "sense": "present"
+    },
+    {
+      "configuration_type": "flag",
+      "configuration_parameter": "--exec-debug",
+      "configuration_value": null,
+      "sense": "present"
+    },
+    {
+      "configuration_type": "flag",
+      "configuration_parameter": "--exec-log",
+      "configuration_value": null,
+      "sense": "present"
+    }
+  ]
+}

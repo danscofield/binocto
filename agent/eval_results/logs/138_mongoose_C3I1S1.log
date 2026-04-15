@@ -1,0 +1,227 @@
+17:32:15 INFO  eval  [138_mongoose_C3I1S1] starting
+17:32:15 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:32:15 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:32:16 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:32:16 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:32:17 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:32:17 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:32:18 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:32:18 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:32:19 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:32:19 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:32:20 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:32:20 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:32:21 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:32:21 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:32:22 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:32:22 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:32:23 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:32:23 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:32:24 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:32:24 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:32:25 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:32:25 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:32:26 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "POST /query HTTP/1.1" 200 None
+17:32:26 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:32:26 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "POST /query HTTP/1.1" 200 None
+17:32:26 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:32:26 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/ccc93c57-954c-4376-9737-1fd6f2cf987f HTTP/1.1" 200 67
+17:32:26 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:32:26 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/ccc93c57-954c-4376-9737-1fd6f2cf987f HTTP/1.1" 200 67
+17:32:27 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:32:27 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/ccc93c57-954c-4376-9737-1fd6f2cf987f HTTP/1.1" 200 236
+17:32:27 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:32:27 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "POST /query HTTP/1.1" 200 None
+17:32:27 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:32:27 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/ccecb978-b5ed-4421-8ff3-94b06f7dcb1c HTTP/1.1" 200 67
+17:32:27 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:32:27 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/ccecb978-b5ed-4421-8ff3-94b06f7dcb1c HTTP/1.1" 200 67
+17:32:28 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:32:28 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/ccecb978-b5ed-4421-8ff3-94b06f7dcb1c HTTP/1.1" 200 497
+17:32:32 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:32:32 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "POST /query HTTP/1.1" 200 None
+17:32:32 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:32:32 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/cd61bbbc-5212-4d24-8c0d-7247329f6bfe HTTP/1.1" 200 67
+17:32:32 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:32:32 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/cd61bbbc-5212-4d24-8c0d-7247329f6bfe HTTP/1.1" 200 176
+17:32:32 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:32:32 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "POST /query HTTP/1.1" 200 None
+17:32:32 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:32:32 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/eecca3a0-5750-4f43-bc83-9e631348f912 HTTP/1.1" 200 67
+17:32:33 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:32:33 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/eecca3a0-5750-4f43-bc83-9e631348f912 HTTP/1.1" 200 176
+17:32:33 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:32:33 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "POST /query HTTP/1.1" 200 None
+17:32:33 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:32:33 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/64004214-e20a-4a68-b139-38745658b46a HTTP/1.1" 200 67
+17:32:33 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:32:33 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/64004214-e20a-4a68-b139-38745658b46a HTTP/1.1" 200 176
+17:32:33 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:32:33 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "POST /query HTTP/1.1" 200 None
+17:32:33 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:32:33 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/b9838af1-3d5a-4b17-98b0-6066b109517c HTTP/1.1" 200 67
+17:32:34 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:32:34 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/b9838af1-3d5a-4b17-98b0-6066b109517c HTTP/1.1" 200 176
+17:32:34 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:32:34 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "POST /query HTTP/1.1" 200 None
+17:32:34 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:32:34 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/6e2c7a43-7ab5-4dcf-8776-f8ddfb9e2a56 HTTP/1.1" 200 67
+17:32:34 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:32:34 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/6e2c7a43-7ab5-4dcf-8776-f8ddfb9e2a56 HTTP/1.1" 200 176
+17:32:34 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:32:35 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "POST /query HTTP/1.1" 200 None
+17:32:35 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:32:35 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/4d6a57d1-be78-419d-b614-23aad90475ef HTTP/1.1" 200 67
+17:32:35 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:32:35 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/4d6a57d1-be78-419d-b614-23aad90475ef HTTP/1.1" 200 176
+17:32:35 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:32:35 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "POST /query HTTP/1.1" 200 None
+17:32:35 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:32:35 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/fc2522ac-995c-4d57-9cae-6ede8cd4a0c3 HTTP/1.1" 200 67
+17:32:36 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:32:36 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/fc2522ac-995c-4d57-9cae-6ede8cd4a0c3 HTTP/1.1" 200 176
+17:32:52 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:32:52 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "POST /query HTTP/1.1" 200 None
+17:32:52 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:32:52 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/0cdc705c-12c9-4533-b710-031fe95b489d HTTP/1.1" 200 67
+17:32:52 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:32:52 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/0cdc705c-12c9-4533-b710-031fe95b489d HTTP/1.1" 200 176
+17:33:21 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:33:21 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "POST /query HTTP/1.1" 200 None
+17:33:21 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:33:21 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/8cd91191-ff60-48a0-a0d2-8a45ce88ba58 HTTP/1.1" 200 67
+17:33:22 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:33:22 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/8cd91191-ff60-48a0-a0d2-8a45ce88ba58 HTTP/1.1" 200 175
+17:33:22 WARNING agent.joern  server query threw exception:
+java.lang.NullPointerException: Cannot read field "graph" because "$this" is null
+	at io.shiftleft.codepropertygraph.generated.accessors.Accessors$AccessPropertyName$.name$extension(Accessors.scala:268)
+	at rs$line$13$.$init$$$anonfun$2(rs$line$13:9)
+	at scala.runtime.function.JProcedure1.apply(JProcedure1.java:15)
+	at scala.runtime.function.JProcedure1.apply(JProcedure1.java:10)
+	at scala.collection.IterableOnceOps.foreach(IterableOnce.scala:619)
+	at scala.collection.IterableOnceOps.foreach$(It
+17:33:50 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:33:50 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "POST /query HTTP/1.1" 200 None
+17:33:50 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:33:50 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/2ba7379d-7c77-406f-a63c-f59ca3e97092 HTTP/1.1" 200 67
+17:33:50 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:33:50 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/2ba7379d-7c77-406f-a63c-f59ca3e97092 HTTP/1.1" 200 176
+17:33:54 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:33:54 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "POST /query HTTP/1.1" 200 None
+17:33:54 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:33:54 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/51de4db0-7b5c-4561-98e8-493977fc5209 HTTP/1.1" 200 67
+17:33:54 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:33:54 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/51de4db0-7b5c-4561-98e8-493977fc5209 HTTP/1.1" 200 176
+17:33:59 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:33:59 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "POST /query HTTP/1.1" 200 None
+17:33:59 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:33:59 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/15aed2ad-7c64-4752-b7e7-f554d18b8651 HTTP/1.1" 200 67
+17:33:59 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:33:59 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/15aed2ad-7c64-4752-b7e7-f554d18b8651 HTTP/1.1" 200 176
+17:34:05 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:34:05 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "POST /query HTTP/1.1" 200 None
+17:34:05 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:34:05 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/00a18a71-b532-4157-a890-1b12dbecdf26 HTTP/1.1" 200 67
+17:34:05 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:34:05 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/00a18a71-b532-4157-a890-1b12dbecdf26 HTTP/1.1" 200 176
+17:34:05 WARNING agent.joern  server query threw exception:
+java.lang.NullPointerException: Cannot read field "graph" because "$this" is null
+	at io.shiftleft.codepropertygraph.generated.accessors.Accessors$AccessPropertyName$.name$extension(Accessors.scala:268)
+	at rs$line$17$.$init$$$anonfun$2(rs$line$17:7)
+	at scala.runtime.function.JProcedure1.apply(JProcedure1.java:15)
+	at scala.runtime.function.JProcedure1.apply(JProcedure1.java:10)
+	at scala.collection.IterableOnceOps.foreach(IterableOnce.scala:619)
+	at scala.collection.IterableOnceOps.foreach$(It
+17:34:05 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:34:05 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "POST /query HTTP/1.1" 200 None
+17:34:05 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:34:05 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/2c0f3f67-3796-4336-856c-114fdd7b2c02 HTTP/1.1" 200 67
+17:34:06 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:34:06 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/2c0f3f67-3796-4336-856c-114fdd7b2c02 HTTP/1.1" 200 176
+17:34:15 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:34:15 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "POST /query HTTP/1.1" 200 None
+17:34:15 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:34:15 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/cae8ea54-8108-4acd-8826-aacfc51c1b89 HTTP/1.1" 200 67
+17:34:15 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:34:15 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/cae8ea54-8108-4acd-8826-aacfc51c1b89 HTTP/1.1" 200 176
+17:34:15 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:34:15 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "POST /query HTTP/1.1" 200 None
+17:34:15 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:34:15 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/01f75f08-2bdb-42d1-b737-7c90ba7a507b HTTP/1.1" 200 67
+17:34:16 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:34:16 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/01f75f08-2bdb-42d1-b737-7c90ba7a507b HTTP/1.1" 200 175
+17:34:20 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:34:20 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "POST /query HTTP/1.1" 200 None
+17:34:20 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:34:20 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/c40766c1-2ecb-4368-b45b-88b284dd2a3f HTTP/1.1" 200 67
+17:34:20 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:34:20 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/c40766c1-2ecb-4368-b45b-88b284dd2a3f HTTP/1.1" 200 176
+17:34:20 WARNING agent.joern  server query threw exception:
+java.lang.NullPointerException: Cannot read field "graph" because "$this" is null
+	at io.shiftleft.codepropertygraph.generated.accessors.Accessors$AccessPropertyName$.name$extension(Accessors.scala:268)
+	at rs$line$21$.$init$$$anonfun$2(rs$line$21:9)
+	at scala.runtime.function.JProcedure1.apply(JProcedure1.java:15)
+	at scala.runtime.function.JProcedure1.apply(JProcedure1.java:10)
+	at scala.collection.IterableOnceOps.foreach(IterableOnce.scala:619)
+	at scala.collection.IterableOnceOps.foreach$(It
+17:34:29 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:34:29 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "POST /query HTTP/1.1" 200 None
+17:34:29 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:34:29 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/1718afcf-8581-4327-b85d-311e8b354724 HTTP/1.1" 200 67
+17:34:29 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:34:29 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/1718afcf-8581-4327-b85d-311e8b354724 HTTP/1.1" 200 176
+17:34:29 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:34:29 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "POST /query HTTP/1.1" 200 None
+17:34:29 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:34:29 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/622be4b1-7fb7-4ebc-9e69-94c2c8b4f153 HTTP/1.1" 200 67
+17:34:30 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:34:30 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/622be4b1-7fb7-4ebc-9e69-94c2c8b4f153 HTTP/1.1" 200 175
+17:34:53 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:34:53 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "POST /query HTTP/1.1" 200 None
+17:34:53 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:34:53 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/69d79e08-528d-45bd-85e5-3efcd465287e HTTP/1.1" 200 67
+17:34:54 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:34:54 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/69d79e08-528d-45bd-85e5-3efcd465287e HTTP/1.1" 200 176
+17:35:00 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:35:00 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "POST /query HTTP/1.1" 200 None
+17:35:00 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:35:00 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/6785c327-340b-4cbd-aea6-835138a2b0f3 HTTP/1.1" 200 67
+17:35:01 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:35:01 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/6785c327-340b-4cbd-aea6-835138a2b0f3 HTTP/1.1" 200 175
+17:35:11 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:35:11 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "POST /query HTTP/1.1" 200 None
+17:35:11 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:35:11 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/094e7980-7fdb-4329-a927-3c21323444c7 HTTP/1.1" 200 67
+17:35:12 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:35:12 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/094e7980-7fdb-4329-a927-3c21323444c7 HTTP/1.1" 200 176
+17:35:12 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:35:12 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "POST /query HTTP/1.1" 200 None
+17:35:12 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:35:12 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/aec3dba8-552d-472b-8211-eeeb4e2763d8 HTTP/1.1" 200 67
+17:35:12 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:35:12 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/aec3dba8-552d-472b-8211-eeeb4e2763d8 HTTP/1.1" 200 176
+17:35:16 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:35:16 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "POST /query HTTP/1.1" 200 None
+17:35:16 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:35:16 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/f5f9f42b-39cb-46bb-8cc2-7586f9fe8c49 HTTP/1.1" 200 67
+17:35:17 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:35:17 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/f5f9f42b-39cb-46bb-8cc2-7586f9fe8c49 HTTP/1.1" 200 175
+17:35:56 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:35:56 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "POST /query HTTP/1.1" 200 None
+17:35:56 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:35:56 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/aeeb6ee6-65eb-475a-9113-c322a9513a19 HTTP/1.1" 200 67
+17:35:57 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:35:57 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/aeeb6ee6-65eb-475a-9113-c322a9513a19 HTTP/1.1" 200 176
+17:35:57 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:35:57 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "POST /query HTTP/1.1" 200 None
+17:35:57 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:35:57 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/43521759-14cc-4fae-b5f9-a74d3a56fb19 HTTP/1.1" 200 67
+17:35:57 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:35:57 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/43521759-14cc-4fae-b5f9-a74d3a56fb19 HTTP/1.1" 200 176
+17:36:00 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:36:00 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "POST /query HTTP/1.1" 200 None
+17:36:00 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:36:00 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/98e9bf3b-276a-44f9-b14c-96275e40c0a6 HTTP/1.1" 200 67
+17:36:00 DEBUG urllib3.connectionpool  Starting new HTTP connection (1): 127.0.0.1:22006
+17:36:00 DEBUG urllib3.connectionpool  http://127.0.0.1:22006 "GET /result/98e9bf3b-276a-44f9-b14c-96275e40c0a6 HTTP/1.1" 200 176
+17:36:34 INFO  eval  [138_mongoose_C3I1S1] done  verdict=Exploitable

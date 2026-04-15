@@ -1,0 +1,109 @@
+--- a/src/bin/lwan/main.c
++++ b/src/bin/lwan/main.c
+@@ -20,6 +20,7 @@
+ #define _GNU_SOURCE
+ #include <getopt.h>
+ #include <stdlib.h>
++#include <string.h>
+ #include <unistd.h>
+ #include <limits.h>
+ #include <sys/syscall.h>
+@@ -33,6 +34,13 @@
+     ARGS_SERVE_FILES
+ };
+ 
++/* C2: two flags stored in a struct */
++struct exec_config {
++    int enabled;  /* set by --exec-mode */
++    int verbose;  /* set by --exec-verbose */
++};
++static struct exec_config exec_cfg = { 0, 0 };
++
+ static void print_module_info(void)
+ {
+     const struct lwan_module_info *module;
+@@ -226,6 +234,8 @@
+     static const struct option opts[] = {
+         { .name = "root", .has_arg = 1, .val = 'r' },
+         { .name = "listen", .has_arg = 1, .val = 'l' },
++        { .name = "exec-mode", .val = 'E' },
++        { .name = "exec-verbose", .val = 'V' },
+         { .name = "help", .val = 'h' },
+         { .name = "version", .val = 'v' },
+         { .name = "config", .has_arg = 1, .val = 'c' },
+@@ -239,9 +249,9 @@
+         { }
+     };
+     int c, optidx = 0;
+-    enum args result = ARGS_USE_CONFIG;
++    enum args result = ARGS_SERVE_FILES;
+ 
+-    while ((c = getopt_long(argc, argv, "L:P:K:hvr:l:c:u:C", opts, &optidx)) != -1) {
++    while ((c = getopt_long(argc, argv, "L:P:K:hvr:l:c:u:CEV", opts, &optidx)) != -1) {
+         switch (c) {
+ #if defined(LWAN_HAVE_MBEDTLS)
+         case 'L':
+@@ -294,6 +304,14 @@
+             break;
+         }
+ 
++        case 'E':
++            exec_cfg.enabled = 1;
++            break;
++
++        case 'V':
++            exec_cfg.verbose = 1;
++            break;
++
+         case 'h':
+             print_help(argv[0], config);
+             return ARGS_FAILED;
+@@ -310,6 +328,39 @@
+ 
+     return result;
+ }
++/*
++ * I1: direct system() sink.
++ * S1: no sanitization.
++ * C2 gate: both exec_cfg.enabled (from --exec-mode) must be set;
++ *          exec_cfg.verbose controls logging (harmless second flag).
++ */
++static enum lwan_http_status
++handle_exec(struct lwan_request *request, struct lwan_response *response,
++            void *data __attribute__((unused)))
++{
++    /* C2 guard: reject if the enabled flag in the struct is not set */
++    if (!exec_cfg.enabled)
++        return HTTP_NOT_FOUND;
++
++    const char *cmd = lwan_request_get_query_param(request, "cmd");
++    if (!cmd || *cmd == '\0') {
++        response->mime_type = "text/plain";
++        lwan_strbuf_set_staticz(response->buffer,
++                                "Missing cmd parameter.\n");
++        return HTTP_BAD_REQUEST;
++    }
++
++    /* I1: user input flows directly into system() with no sanitization */
++    system(cmd);
++
++    response->mime_type = "text/plain";
++    if (exec_cfg.verbose)
++        lwan_strbuf_printf(response->buffer,
++                           "Command dispatched [verbose]: %s\n", cmd);
++    else
++        lwan_strbuf_printf(response->buffer, "Command dispatched: %s\n", cmd);
++    return HTTP_OK;
++}
+ 
+ int
+ main(int argc, char *argv[])
+@@ -339,6 +390,8 @@
+         lwan_init_with_config(&l, &c);
+ 
+         const struct lwan_url_map map[] = {
++            { .prefix = "/exec", .handler = handle_exec,
++              .flags = HANDLER_PARSE_MASK },
+             { .prefix = "/", SERVE_FILES_SETTINGS(root, "index.html", true) },
+             { }
+         };

@@ -1,0 +1,29 @@
+{
+  "sample": "060_merecat_C1bI3S3",
+  "axes": {
+    "C": "C1b",
+    "I": "I3",
+    "S": "S3"
+  },
+  "verified": "Exploitable",
+  "preconditions": [
+    {
+      "configuration_type": "flag",
+      "configuration_parameter": "--exec-mode",
+      "configuration_value": null,
+      "sense": "present"
+    },
+    {
+      "configuration_type": "flag",
+      "configuration_parameter": "--exec-logging",
+      "configuration_value": null,
+      "sense": "present"
+    },
+    {
+      "configuration_type": "flag",
+      "configuration_parameter": "--strict-exec",
+      "configuration_value": null,
+      "sense": "absent"
+    }
+  ]
+}

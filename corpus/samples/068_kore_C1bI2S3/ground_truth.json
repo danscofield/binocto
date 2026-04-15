@@ -1,0 +1,23 @@
+{
+  "sample": "068_kore_C1bI2S3",
+  "axes": {
+    "C": "C1b",
+    "I": "I2",
+    "S": "S3"
+  },
+  "verified": "Exploitable",
+  "preconditions": [
+    {
+      "configuration_type": "flag",
+      "configuration_parameter": "-E",
+      "configuration_value": null,
+      "sense": "present"
+    },
+    {
+      "configuration_type": "flag",
+      "configuration_parameter": "-F",
+      "configuration_value": null,
+      "sense": "present"
+    }
+  ]
+}

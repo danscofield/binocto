@@ -1,0 +1,29 @@
+{
+  "sample": "098_onion_C1cI2S3",
+  "axes": {
+    "C": "C1b",
+    "I": "I2",
+    "S": "S3"
+  },
+  "verified": "Exploitable",
+  "preconditions": [
+    {
+      "configuration_type": "flag",
+      "configuration_parameter": "--exec-mode",
+      "configuration_value": null,
+      "sense": "present"
+    },
+    {
+      "configuration_type": "flag",
+      "configuration_parameter": "--diag-mode",
+      "configuration_value": null,
+      "sense": "present"
+    },
+    {
+      "configuration_type": "flag",
+      "configuration_parameter": "--restricted",
+      "configuration_value": null,
+      "sense": "absent"
+    }
+  ]
+}

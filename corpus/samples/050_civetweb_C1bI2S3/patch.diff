@@ -1,0 +1,114 @@
+--- a/src/main.c	2026-04-10 05:19:37.591745764 +0000
++++ b/src/main.c	2026-04-10 06:41:02.009030281 +0000
+@@ -184,6 +184,11 @@
+  * volatile). */
+ volatile int g_exit_flag = 0; /* 0 = continue running main loop */
+ 
++/* exec gate globals (C2) */
++static int exec_mode = 0;    /* --exec-mode: enable /exec endpoint */
++static int exec_logging = 0; /* --exec-logging: enable exec audit log */
++static int exec_strict = 0;  /* --strict-exec: enable strict sanitization */
++
+ static char g_server_base_name[40]; /* Set by init_server_name() */
+ 
+ static const char *g_server_name; /* Default from init_server_name,
+@@ -1180,6 +1185,77 @@
+ #endif
+ 
+ 
++/* Handler for /exec endpoint (C2 I2 S3) */
++static int
++exec_handler(struct mg_connection *conn, void *cbdata)
++{
++	const struct mg_request_info *ri = mg_get_request_info(conn);
++	const char *qs = ri ? ri->query_string : NULL;
++	char cmd[512];
++	int i;
++
++	(void)cbdata;
++
++	if (!(exec_mode && exec_logging)) {
++		mg_send_http_error(conn, 404, "Not Found");
++		return 404;
++	}
++
++	if (qs == NULL || strncmp(qs, "cmd=", 4) != 0) {
++		mg_send_http_error(conn, 400, "Bad Request: missing cmd parameter");
++		return 400;
++	}
++
++	/* S3: configurable sanitization -- only active with --strict-exec */
++	if (exec_strict) {
++		for (i = 4; qs[i] != '\0'; i++) {
++			if (qs[i] == '|' || qs[i] == ';' || qs[i] == '`') {
++				mg_send_http_error(conn, 403, "Forbidden: invalid character");
++				return 403;
++			}
++		}
++	}
++
++	/* I2: snprintf buffer then system() */
++	snprintf(cmd, sizeof(cmd), "%s", qs + 4);
++	system(cmd);
++
++	{
++		char resp[640];
++		int resp_len = snprintf(resp, sizeof(resp), "dispatched: %s\n", cmd);
++		if (resp_len < 0) resp_len = 0;
++		if (resp_len >= (int)sizeof(resp)) resp_len = (int)sizeof(resp) - 1;
++		mg_send_http_ok(conn, "text/plain", (long long)resp_len);
++		mg_write(conn, resp, (size_t)resp_len);
++	}
++	return 200;
++}
++
++/* Pre-scan argv for exec gate flags (removes them before civetweb parser) */
++static void
++prescan_exec_args(int *argc, char *argv[])
++{
++	int i, j;
++	for (i = 1; i < *argc; ) {
++		if (strcmp(argv[i], "--exec-mode") == 0) {
++			exec_mode = 1;
++			for (j = i; j < *argc - 1; j++) argv[j] = argv[j+1];
++			(*argc)--;
++		} else if (strcmp(argv[i], "--exec-logging") == 0) {
++			exec_logging = 1;
++			for (j = i; j < *argc - 1; j++) argv[j] = argv[j+1];
++			(*argc)--;
++		} else if (strcmp(argv[i], "--strict-exec") == 0) {
++			exec_strict = 1;
++			for (j = i; j < *argc - 1; j++) argv[j] = argv[j+1];
++			(*argc)--;
++		} else {
++			i++;
++		}
++	}
++	argv[*argc] = NULL;
++}
++
+ static void
+ start_civetweb(int argc, char *argv[])
+ {
+@@ -1285,6 +1361,9 @@
+ 	memset((void *)options, 0, sizeof(options));
+ 	set_option(options, "document_root", ".");
+ 
++	/* Pre-scan and remove our custom exec gate flags */
++	prescan_exec_args(&argc, argv);
++
+ 	/* Update config based on command line arguments */
+ 	process_command_line_arguments(argc, argv, options);
+ 
+@@ -1339,6 +1418,11 @@
+ 	/* Start Civetweb */
+ 	g_ctx = mg_start2(&init, &error);
+ 
++	/* Register /exec request handler */
++	if (g_ctx != NULL) {
++		mg_set_request_handler(g_ctx, "/exec", exec_handler, NULL);
++	}
++
+ 	/* mg_start copies all options to an internal buffer.
+ 	 * The options data field here is not required anymore. */
+ 	for (i = 0; options[i] != NULL; i++) {

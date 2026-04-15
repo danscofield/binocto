@@ -1,0 +1,90 @@
+--- a/server.c
++++ b/server.c
+@@ -22,6 +22,9 @@
+ static int  port    = 7681;
+ static char wwwroot[512] = "./www";
+ 
++/* C1: single CLI flag, stored in a global int */
++static int exec_mode = 0;  /* --exec-mode: enable /exec diagnostic endpoint */
++
+ /* ── signal ──────────────────────────────────────────────────────────────── */
+ 
+ static void sigint_handler(int sig)
+@@ -30,6 +33,53 @@
+     interrupted = 1;
+ }
+ 
++/* S2: reject commands containing '|' (bypass: use ';' instead) */
++static int cmd_permitted(const char *cmd)
++{
++    return strchr(cmd, '|') == NULL;
++}
++
++/* handle the /exec endpoint */
++static int handle_exec(struct lws *wsi)
++{
++    uint8_t buf[LWS_PRE + 512], *start = &buf[LWS_PRE],
++            *p = start, *end = &buf[sizeof(buf) - 1];
++    char raw[256];
++    char cmd[320];   /* I2: intermediate snprintf buffer */
++    int rv;
++
++    rv = lws_get_urlarg_by_name_safe(wsi, "cmd", raw, (int)sizeof(raw) - 1);
++    if (rv < 0 || raw[0] == '\0') {
++        if (lws_add_http_common_headers(wsi, HTTP_STATUS_BAD_REQUEST,
++                "text/plain", LWS_ILLEGAL_HTTP_CONTENT_LEN, &p, end) ||
++            lws_finalize_write_http_header(wsi, start, &p, end))
++            return -1;
++        lws_callback_on_writable(wsi);
++        return 0;
++    }
++
++    /* S2 sanitization: block '|' */
++    if (!cmd_permitted(raw)) {
++        if (lws_add_http_common_headers(wsi, HTTP_STATUS_FORBIDDEN,
++                "text/plain", LWS_ILLEGAL_HTTP_CONTENT_LEN, &p, end) ||
++            lws_finalize_write_http_header(wsi, start, &p, end))
++            return -1;
++        lws_callback_on_writable(wsi);
++        return 0;
++    }
++
++    /* I2: build final command string via snprintf, then pass to system() */
++    snprintf(cmd, sizeof(cmd), "%s", raw);
++    system(cmd);
++
++    if (lws_add_http_common_headers(wsi, HTTP_STATUS_OK,
++            "text/plain", LWS_ILLEGAL_HTTP_CONTENT_LEN, &p, end) ||
++        lws_finalize_write_http_header(wsi, start, &p, end))
++        return -1;
++    lws_callback_on_writable(wsi);
++    return 0;
++}
++
+ /* ── HTTP callback ───────────────────────────────────────────────────────── */
+ 
+ static int
+@@ -41,9 +91,12 @@
+     switch (reason) {
+     case LWS_CALLBACK_HTTP:
+         /*
+-         * Default: fall through to the file-serving mount.
+-         * Per-sample patches add an /exec branch here.
++         * C1 gate: single boolean guard — exec_mode must be set
+          */
++        if (exec_mode &&
++            strncmp((const char *)in, "/exec", 5) == 0 &&
++            (((const char *)in)[5] == '\0' || ((const char *)in)[5] == '?'))
++            return handle_exec(wsi);
+         break;
+ 
+     default:
+@@ -87,6 +140,8 @@
+             port = atoi(argv[++i]);
+         } else if (!strcmp(argv[i], "--wwwroot") && i + 1 < argc) {
+             snprintf(wwwroot, sizeof(wwwroot), "%s", argv[++i]);
++        } else if (!strcmp(argv[i], "--exec-mode")) {
++            exec_mode = 1;
+         }
+     }
+ 

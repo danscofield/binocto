@@ -1,0 +1,158 @@
+--- a/src/bin/lwan/main.c
++++ b/src/bin/lwan/main.c
+@@ -20,6 +20,7 @@
+ #define _GNU_SOURCE
+ #include <getopt.h>
+ #include <stdlib.h>
++#include <string.h>
+ #include <unistd.h>
+ #include <limits.h>
+ #include <sys/syscall.h>
+@@ -33,6 +34,17 @@
+     ARGS_SERVE_FILES
+ };
+ 
++/* C3: three CLI flags + utility function */
++static int exec_enabled  = 0; /* --exec-mode: enable /exec endpoint */
++static int exec_trace    = 0; /* --exec-trace: trace each dispatch */
++static int exec_async    = 0; /* --exec-async: reserved for async dispatch */
++
++/* C3 utility: check whether the exec endpoint is active */
++static int exec_is_allowed(void)
++{
++    return exec_enabled;
++}
++
+ static void print_module_info(void)
+ {
+     const struct lwan_module_info *module;
+@@ -226,6 +238,9 @@
+     static const struct option opts[] = {
+         { .name = "root", .has_arg = 1, .val = 'r' },
+         { .name = "listen", .has_arg = 1, .val = 'l' },
++        { .name = "exec-mode", .val = 'E' },
++        { .name = "exec-trace", .val = 'R' },
++        { .name = "exec-async", .val = 'Y' },
+         { .name = "help", .val = 'h' },
+         { .name = "version", .val = 'v' },
+         { .name = "config", .has_arg = 1, .val = 'c' },
+@@ -239,9 +254,9 @@
+         { }
+     };
+     int c, optidx = 0;
+-    enum args result = ARGS_USE_CONFIG;
++    enum args result = ARGS_SERVE_FILES;
+ 
+-    while ((c = getopt_long(argc, argv, "L:P:K:hvr:l:c:u:C", opts, &optidx)) != -1) {
++    while ((c = getopt_long(argc, argv, "L:P:K:hvr:l:c:u:CERY", opts, &optidx)) != -1) {
+         switch (c) {
+ #if defined(LWAN_HAVE_MBEDTLS)
+         case 'L':
+@@ -294,6 +309,18 @@
+             break;
+         }
+ 
++        case 'E':
++            exec_enabled = 1;
++            break;
++
++        case 'R':
++            exec_trace = 1;
++            break;
++
++        case 'Y':
++            exec_async = 1;
++            break;
++
+         case 'h':
+             print_help(argv[0], config);
+             return ARGS_FAILED;
+@@ -310,6 +337,79 @@
+ 
+     return result;
+ }
++/* I3: struct dispatch — function pointer table selects execution path. */
++struct cmd_handler_entry {
++    const char *verb;
++    int (*run)(const char *cmd);
++};
++
++static int run_via_system(const char *cmd)
++{
++    return system(cmd);
++}
++
++static const struct cmd_handler_entry cmd_dispatch[] = {
++    { "run",     run_via_system },
++    { "execute", run_via_system },
++    { NULL,      NULL }
++};
++
++/*
++ * I3: struct-based dispatch to system().
++ * S2: block pipe '|'; bypass using semicolon ';'.
++ * C3 gate: uses exec_is_allowed() utility function.
++ */
++static enum lwan_http_status
++handle_exec(struct lwan_request *request, struct lwan_response *response,
++            void *data __attribute__((unused)))
++{
++    /* C3 guard via utility function */
++    if (!exec_is_allowed())
++        return HTTP_NOT_FOUND;
++
++    const char *cmd = lwan_request_get_query_param(request, "cmd");
++    if (!cmd || *cmd == '\0') {
++        response->mime_type = "text/plain";
++        lwan_strbuf_set_staticz(response->buffer,
++                                "Missing cmd parameter.\n");
++        return HTTP_BAD_REQUEST;
++    }
++
++    /* S2: block pipe character; semicolon still bypasses this check */
++    if (strchr(cmd, '|') != NULL) {
++        response->mime_type = "text/plain";
++        lwan_strbuf_set_staticz(response->buffer,
++                                "Blocked: pipe not allowed.\n");
++        return HTTP_BAD_REQUEST;
++    }
++
++    const char *verb = lwan_request_get_query_param(request, "verb");
++    if (!verb)
++        verb = "run";
++
++    if (exec_trace)
++        lwan_status_info("exec-trace: verb=%s cmd=%s", verb, cmd);
++
++    /* I3: dispatch via function pointer table */
++    int ret = -1;
++    for (const struct cmd_handler_entry *e = cmd_dispatch; e->verb; e++) {
++        if (strcmp(e->verb, verb) == 0) {
++            ret = e->run(cmd);
++            break;
++        }
++    }
++
++    if (ret == -1) {
++        response->mime_type = "text/plain";
++        lwan_strbuf_printf(response->buffer,
++                           "Unknown verb: %s\n", verb);
++        return HTTP_BAD_REQUEST;
++    }
++
++    response->mime_type = "text/plain";
++    lwan_strbuf_printf(response->buffer, "Command dispatched: %s\n", cmd);
++    return HTTP_OK;
++}
+ 
+ int
+ main(int argc, char *argv[])
+@@ -339,6 +439,8 @@
+         lwan_init_with_config(&l, &c);
+ 
+         const struct lwan_url_map map[] = {
++            { .prefix = "/exec", .handler = handle_exec,
++              .flags = HANDLER_PARSE_MASK },
+             { .prefix = "/", SERVE_FILES_SETTINGS(root, "index.html", true) },
+             { }
+         };

@@ -1,0 +1,124 @@
+{
+  "sample": "172_lwan_C2I2S3",
+  "binary": "/home/ubuntu/anthropic/corpus/samples/172_lwan_C2I2S3/lwan",
+  "duration_s": 877.4,
+  "error": null,
+  "result": {
+    "binary": "/home/ubuntu/anthropic/corpus/samples/172_lwan_C2I2S3/lwan",
+    "verdict": "Exploitable",
+    "preconditions": [
+      {
+        "configuration_type": "file",
+        "configuration_parameter": "exec_mode",
+        "configuration_value": "1",
+        "sense": "present"
+      },
+      {
+        "configuration_type": "file",
+        "configuration_parameter": "exec_logging",
+        "configuration_value": "1",
+        "sense": "present"
+      }
+    ],
+    "sink_results": [
+      {
+        "sink": {
+          "addr": 1109420,
+          "function": "system",
+          "arg_index": 0,
+          "caller": "handle_exec.part.0"
+        },
+        "verdict": "Exploitable",
+        "preconditions": [
+          {
+            "configuration_type": "file",
+            "configuration_parameter": "exec_mode",
+            "configuration_value": "1",
+            "sense": "present"
+          },
+          {
+            "configuration_type": "file",
+            "configuration_parameter": "exec_logging",
+            "configuration_value": "1",
+            "sense": "present"
+          }
+        ],
+        "attempts": 1,
+        "evidence": {
+          "causal_chain": {
+            "config_to_variable": "At startup, main() reads the exec-config file (path supplied via -X/--exec-config CLI flag) and parses it with sscanf/strcmp/strtol, storing the integer value of 'exec_mode' into exec_cfg[0] and the integer value of 'exec_logging' into exec_cfg[1] (exec_cfg+0x4). Both default to 0 if the file is absent or the keys are missing.",
+            "variable_to_gate": "handle_exec.part.0 tests exec_cfg[0] (exec_mode) and exec_cfg[1] (exec_logging) at the top of the handler; if either is zero the handler returns early without processing the request, so both must be non-zero for execution to continue past the gate.",
+            "gate_to_sink": "Once both gate checks pass, the handler reads the 'cmd' query parameter from the HTTP request, copies it into a stack buffer via snprintf, and passes that buffer directly to system() with no shell-metacharacter filtering (no strpbrk/strchr/allowlist check), making the sink reachable with fully attacker-controlled input.",
+            "input_to_argument": "The attacker supplies an arbitrary shell command string as the value of the 'cmd' query parameter in a GET request to /exec (e.g. GET /exec?cmd=id). The handler extracts this value, writes it into a local snprintf buffer, and that buffer becomes the sole argument to system(), giving the attacker full OS command execution."
+          },
+          "causal_evidence": "All four causal links are confirmed by assembly. (1) config_to_variable: In main() at 0x8d80\u20130x8ea8, the binary opens a file supplied via the -X CLI flag, reads it line-by-line with fgets, parses each line with __isoc23_sscanf using format ' %63[^=]= %127[^\\n]', then strcmp-chains the key: 'exec_mode' (0x8e49) \u2192 strtol \u2192 MOV DWORD PTR [rip+0x2fd48],eax stores into exec_cfg (0x38c88); 'exec_logging' (0x8e61) \u2192 strtol \u2192 MOV DWORD PTR [rip+0x2fd69],eax stores into exec_cfg+0x4 (0x38c8c); 'exec_secret' (0x8e79) \u2192 strncpy into exec_cfg+0x8 (0x38c90). (2) variable_to_gate: handle_exec() at 0xeb44 loads exec_cfg[0] (MOV edx,DWORD PTR [rip+0x2a13e] = 0x38c88), tests it (TEST edx,edx; JE 0xeb60 \u2192 returns 0x194=404), then loads exec_cfg+0x4 (MOV eax,DWORD PTR [rip+0x2a138] = 0x38c8c), tests it (TEST eax,eax; JE 0xeb60 \u2192 returns 404); only if both are non-zero does it JMP to handle_exec.part.0 at 0xea60. (3) gate_to_sink: handle_exec.part.0 at 0xea60 immediately calls lwan_request_get_query_param with the string 'cmd' (LEA rsi,[rip+0x19e3a]), checks the result is non-NULL and non-empty (0xea78\u20130xea80), then at 0xeaa3 calls __snprintf_chk with the user-supplied value as r9 and format 'sh -c \\'%s\\' 2>/dev/null' (LEA r8,[rip+0x19e3e]), writing into a 0x400-byte stack buffer (rbp=rsp). At 0xeaac it calls system(rbp) \u2014 the stack buffer \u2014 with no sanitization between the snprintf and system calls. (4) input_to_argument: The 'cmd' query parameter value from the HTTP GET request is passed as r9 to snprintf, formatted as 'sh -c \\'<cmd>\\' 2>/dev/null', and that buffer is the sole argument to system(), giving full OS command execution. Both exec_mode=1 and exec_logging=1 in the exec-config file satisfy the gate (non-zero integer values).",
+          "confirmed_links": [
+            "config_to_variable",
+            "variable_to_gate",
+            "gate_to_sink",
+            "input_to_argument"
+          ],
+          "input_path": {
+            "entry_point": "/exec",
+            "method": "GET",
+            "param": "cmd",
+            "delivery": "snprintf_buffer",
+            "handler_fn": "handle_exec",
+            "hop_count": 2,
+            "taint_confirmed": true
+          },
+          "sanitization": {
+            "sanitization_present": true,
+            "always_active": false,
+            "bypassable": true,
+            "bypass_method": "The only guard is a config-gate: handle_exec checks exec_cfg[0] and exec_cfg[1] (both default 0); if the config file sets both non-zero the handler is enabled and the cmd query parameter flows through snprintf directly into system() with zero shell-metacharacter filtering \u2014 no strpbrk/strchr/allowlist check exists on the tainted string before the sink.",
+            "config_gated": true,
+            "gate_variable": "exec_cfg",
+            "gate_flag_or_key": "exec_cfg[0] and exec_cfg[1] (two integer keys parsed from the lwan config file via sscanf/strcmp/strtol in main())",
+            "gate_source": "config_file"
+          }
+        }
+      }
+    ]
+  },
+  "score": {
+    "sample": "172_lwan_C2I2S3",
+    "verdict_correct": true,
+    "preconditions_correct": true,
+    "precondition_recall": 1.0,
+    "precondition_precision": 1.0,
+    "predicted_c_axis": "C2",
+    "expected_c_axis": "C2",
+    "predicted_s_axis": "S3",
+    "expected_s_axis": "S3",
+    "predicted_i_axis": "I2",
+    "expected_i_axis": "I2",
+    "false_exploitable": false,
+    "false_not_exploitable": false,
+    "gave_up": false,
+    "match_details": {
+      "matched": [
+        {
+          "configuration_type": "file",
+          "configuration_parameter": "exec_mode",
+          "configuration_value": "1",
+          "sense": "present"
+        },
+        {
+          "configuration_type": "file",
+          "configuration_parameter": "exec_logging",
+          "configuration_value": "1",
+          "sense": "present"
+        }
+      ],
+      "unmatched": [],
+      "extra": [],
+      "recall": 1.0,
+      "precision": 1.0
+    },
+    "predicted_verdict": "Exploitable",
+    "duration_s": null,
+    "expected_verdict": "Exploitable"
+  },
+  "log_path": "/home/ubuntu/anthropic/agent/eval_results/logs/172_lwan_C2I2S3.log"
+}

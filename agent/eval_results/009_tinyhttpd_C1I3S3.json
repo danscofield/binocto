@@ -1,0 +1,171 @@
+{
+  "sample": "009_tinyhttpd_C1I3S3",
+  "binary": "/home/ubuntu/anthropic/corpus/samples/009_tinyhttpd_C1I3S3/httpd",
+  "duration_s": 266.4,
+  "error": null,
+  "result": {
+    "binary": "/home/ubuntu/anthropic/corpus/samples/009_tinyhttpd_C1I3S3/httpd",
+    "verdict": "Exploitable",
+    "preconditions": [
+      {
+        "configuration_type": "flag",
+        "configuration_parameter": "--exec-mode",
+        "configuration_value": null,
+        "sense": "present"
+      }
+    ],
+    "sink_results": [
+      {
+        "sink": {
+          "addr": 1055566,
+          "function": "system",
+          "arg_index": 0,
+          "caller": "dispatch_exec"
+        },
+        "verdict": "Exploitable",
+        "preconditions": [
+          {
+            "configuration_type": "flag",
+            "configuration_parameter": "--exec-mode",
+            "configuration_value": null,
+            "sense": "present"
+          },
+          {
+            "configuration_type": "flag",
+            "configuration_parameter": "--strict-exec",
+            "configuration_value": null,
+            "sense": "absent"
+          }
+        ],
+        "attempts": 1,
+        "evidence": {
+          "causal_chain": {
+            "config_to_variable": "At process startup, main() parses argv: if '--exec-mode' is present it sets exec_mode=1, enabling the /exec handler; if '--strict-exec' is present it sets strict_exec=1, enabling the strpbrk metacharacter filter inside handle_exec().",
+            "variable_to_gate": "Inside handle_exec(), exec_mode is tested first \u2014 if exec_mode != 1 the handler returns immediately and the sink is never reached. Later, strict_exec is tested before the sanitization block: if strict_exec == 0 the strpbrk filter is skipped entirely and the raw cmd value is used without any sanitization.",
+            "gate_to_sink": "With exec_mode=1 (handler active) and strict_exec=0 (filter bypassed), execution falls through directly to the system() call, passing the unsanitized cmd string as its argument.",
+            "input_to_argument": "An HTTP GET request to /exec?cmd=<payload> is accepted by accept_request(), which parses the query string and stores the value of the 'cmd' parameter into a struct field. This struct field is passed through a 3-hop call chain (accept_request \u2192 \u2026 \u2192 handle_exec) and ultimately supplied as the argument to system(), giving the attacker full OS command injection."
+          },
+          "causal_evidence": "main() at 0x31b5 stores 1 into exec_mode@0x6014 when '--exec-mode' is present (strcmp at 0x314b against string at 0x43cd), and at 0x31ee stores 1 into strict_exec@0x6018 when '--strict-exec' is present (strcmp at 0x31e5 against string at 0x43d9). accept_request() at 0x1b08 loads exec_mode@0x6014 and gates the /exec handler (je 0x1bc7 if zero); handle_exec() at 0x17e9 loads strict_exec@0x6018 and skips the strpbrk filter (je 0x1830 if zero), falling through at 0x1843 to call dispatch_exec() with the raw cmd pointer. dispatch_exec() at 0x1748 dereferences the struct to get the cmd string and passes it directly to system@plt at 0x174e. The HTTP query string after '?cmd=' is extracted by accept_request() at 0x1b64\u20130x1b97 via strchr('?') and passed as-is through handle_exec() into dispatch_exec() \u2192 system(), giving full unauthenticated OS command injection when --exec-mode is present and --strict-exec is absent.",
+          "confirmed_links": [
+            "config_to_variable",
+            "variable_to_gate",
+            "gate_to_sink",
+            "input_to_argument"
+          ],
+          "input_path": {
+            "entry_point": "/exec",
+            "method": "GET",
+            "param": "cmd",
+            "delivery": "struct_field",
+            "handler_fn": "accept_request",
+            "hop_count": 3,
+            "taint_confirmed": true
+          },
+          "sanitization": {
+            "sanitization_present": true,
+            "always_active": false,
+            "bypassable": true,
+            "bypass_method": "strpbrk metacharacter filter is only executed when the --strict-exec CLI flag sets strict_exec=1; without that flag the check is skipped entirely and the raw cmd value flows directly into system(). Even when strict_exec is enabled, the blocklist charset may be incomplete (allowlist bypass possible depending on charset contents).",
+            "config_gated": true,
+            "gate_variable": "strict_exec",
+            "gate_flag_or_key": "--strict-exec",
+            "gate_source": "argv"
+          }
+        }
+      },
+      {
+        "sink": {
+          "addr": 1058104,
+          "function": "execl",
+          "arg_index": 0,
+          "caller": "execute_cgi"
+        },
+        "verdict": "Exploitable",
+        "preconditions": [
+          {
+            "configuration_type": "flag",
+            "configuration_parameter": "--exec-mode",
+            "configuration_value": null,
+            "sense": "present"
+          }
+        ],
+        "attempts": 1,
+        "evidence": {
+          "causal_chain": {
+            "config_to_variable": "The CLI flag --exec-mode is parsed in main() and sets the global variable exec_mode (at 0x6014) to 1. Without this flag exec_mode defaults to 0 and the CGI execution path is never taken.",
+            "variable_to_gate": "In accept_request(), when exec_mode==1 the code evaluates whether the resolved filesystem path for the requested URL has any execute bit set (S_IXUSR|S_IXGRP|S_IXOTH) or the request is a POST with a query string; if so, cgi_flag is set to 1. The HTTP method must be GET or POST for the request to be processed at all. These conditions together gate the branch that calls execute_cgi().",
+            "gate_to_sink": "Once exec_mode==1 and cgi_flag==1 (execute bit present on the target file), accept_request() calls execute_cgi(), which constructs the CGI command path via snprintf into a stack buffer and then passes it directly to execl() at 0x102538. The strpbrk sanitization filter in handle_exec() is on a completely separate code path (dispatch_exec) and never intercepts the execl() call inside execute_cgi(), so no sanitization is applied regardless of strict_exec state.",
+            "input_to_argument": "The attacker supplies a URL path such as GET /cgi-bin/<script> where <script> is attacker-controlled. accept_request() resolves this URL to a filesystem path and copies it (via snprintf) into a stack buffer. That buffer is passed without sanitization as the path argument to execl() at 0x102538, giving the attacker direct control over the executed binary path."
+          },
+          "causal_evidence": "All four causal links are confirmed by assembly. (1) main() at 0x31a6 compares argv against the literal string '--exec-mode' (confirmed in binary_strings at 0x43cd) and on match stores 1 into global exec_mode at 0x6014 via 'mov DWORD PTR [rip+0x2e55],0x1'. (2) accept_request() at 0x1b08 loads exec_mode from 0x6014 and tests it; if zero, jumps to 0x1bc7 bypassing the CGI path entirely. (3) When exec_mode==1 and the target file has any execute bit set (checked at 0x1d7c\u20130x1d9b), cgi_flag is set to 1 and execute_cgi() is called at 0x1de6; inside execute_cgi() the child process (fork at 0x23b0, pid==0 branch at 0x242c) reaches execl@plt at 0x2538 with no intervening sanitization \u2014 the strpbrk check in handle_exec() is on the separate /exec dispatch path and never intercepts this flow. (4) The attacker-supplied URL path is sprintf'd into a stack buffer as 'htdocs<path>' in accept_request() and passed as the path argument (rsi/rdi) directly to execl() at 0x2538, giving the attacker full control over the executed binary path.",
+          "confirmed_links": [
+            "config_to_variable",
+            "variable_to_gate",
+            "gate_to_sink",
+            "input_to_argument"
+          ],
+          "input_path": {
+            "entry_point": "/cgi-bin/<script>",
+            "method": "GET",
+            "param": "URL path (the CGI script path itself)",
+            "delivery": "snprintf_buffer",
+            "handler_fn": "accept_request",
+            "hop_count": 2,
+            "taint_confirmed": true
+          },
+          "sanitization": {
+            "sanitization_present": true,
+            "always_active": false,
+            "bypassable": true,
+            "bypass_method": "The strpbrk metacharacter filter in handle_exec() only executes when both exec_mode (0x6014) AND strict_exec (0x6018) globals are non-zero. These are set exclusively by CLI argv flags passed to main(). When exec_mode is absent (default=0), accept_request() routes directly to execute_cgi() -> execl() at 0x102538 with zero sanitization. Even when exec_mode is set but strict_exec is absent, handle_exec() skips the strpbrk check entirely. Furthermore, the strpbrk filter in handle_exec() guards a different execution path (dispatch_exec) and never protects the execl() sink at 0x102538 in execute_cgi regardless of flag state.",
+            "config_gated": true,
+            "gate_variable": "exec_mode (0x6014) and strict_exec (0x6018)",
+            "gate_flag_or_key": "argv flag at 0x43cd enables exec_mode; argv flag at 0x43d9 enables strict_exec",
+            "gate_source": "argv"
+          }
+        }
+      }
+    ]
+  },
+  "score": {
+    "sample": "009_tinyhttpd_C1I3S3",
+    "verdict_correct": true,
+    "preconditions_correct": false,
+    "precondition_recall": 0.5,
+    "precondition_precision": 1.0,
+    "predicted_c_axis": "C1",
+    "expected_c_axis": "C1",
+    "predicted_s_axis": "S3",
+    "expected_s_axis": "S3",
+    "predicted_i_axis": "I2",
+    "expected_i_axis": "I3",
+    "false_exploitable": false,
+    "false_not_exploitable": false,
+    "gave_up": false,
+    "match_details": {
+      "matched": [
+        {
+          "configuration_type": "flag",
+          "configuration_parameter": "--exec-mode",
+          "configuration_value": null,
+          "sense": "present"
+        }
+      ],
+      "unmatched": [
+        {
+          "configuration_type": "flag",
+          "configuration_parameter": "--strict-exec",
+          "configuration_value": null,
+          "sense": "absent"
+        }
+      ],
+      "extra": [],
+      "recall": 0.5,
+      "precision": 1.0
+    },
+    "predicted_verdict": "Exploitable",
+    "duration_s": null,
+    "expected_verdict": "Exploitable"
+  },
+  "log_path": "/home/ubuntu/anthropic/agent/eval_results/logs/009_tinyhttpd_C1I3S3.log"
+}

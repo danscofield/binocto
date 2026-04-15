@@ -1,0 +1,106 @@
+{
+  "sample": "007_darkhttpd_C1I3S1",
+  "binary": "/home/ubuntu/anthropic/corpus/samples/007_darkhttpd_C1I3S1/darkhttpd",
+  "duration_s": 366.4,
+  "error": null,
+  "result": {
+    "binary": "/home/ubuntu/anthropic/corpus/samples/007_darkhttpd_C1I3S1/darkhttpd",
+    "verdict": "Exploitable",
+    "preconditions": [
+      {
+        "configuration_type": "flag",
+        "configuration_parameter": "--exec-mode",
+        "configuration_value": null,
+        "sense": "present"
+      }
+    ],
+    "sink_results": [
+      {
+        "sink": {
+          "addr": 1079468,
+          "function": "system",
+          "arg_index": 0,
+          "caller": "dispatch_exec"
+        },
+        "verdict": "Exploitable",
+        "preconditions": [
+          {
+            "configuration_type": "flag",
+            "configuration_parameter": "--exec-mode",
+            "configuration_value": null,
+            "sense": "present"
+          }
+        ],
+        "attempts": 1,
+        "evidence": {
+          "causal_chain": {
+            "config_to_variable": "At process startup, parse_commandline() (0x105217) scans argv for '--exec-mode'; when found it writes 1 to the global exec_mode variable at address 0xf1c4 (LEA reference 0x10c117). Without this flag exec_mode remains 0 (its default).",
+            "variable_to_gate": "Inside handle_exec(), the very first check tests exec_mode == 0; if true the handler returns immediately and the /exec endpoint is entirely inert. Only when exec_mode == 1 (set by --exec-mode) does execution continue past this gate.",
+            "gate_to_sink": "Once the exec_mode gate is satisfied, handle_exec() reads the 'cmd' query parameter from the GET request, stores it in a struct field, and \u2014 with no shell-metacharacter filtering or any other sanitization \u2014 passes the value verbatim to system(), completing the code-execution path.",
+            "input_to_argument": "The attacker supplies an arbitrary OS command string as the 'cmd' query parameter in a GET request to /exec (e.g. GET /exec?cmd=id). After three internal hops confirmed by taint analysis, the raw string is placed directly as the argument to system(), giving the attacker full shell command injection."
+          },
+          "causal_evidence": "parse_commandline at 0x10520e compares argv against '--exec-mode' (string at 0x10c117, confirmed in binary); on match, 0x105217 writes MOV dword ptr [0x10f1c4], 0x1 setting exec_mode=1. process_request at 0x867b loads exec_mode from 0xf1c4 via RIP-relative addressing, tests it, and jumps to process_get (skipping exec) if zero; when non-zero and URL is GET /exec[?...], it calls handle_exec at 0x86d5. handle_exec at 0x78d7 reads the URL field ([rax+0x50]), finds '?' via strchr, checks for 'cmd=' prefix via strncmp at 0x7915, advances the pointer 5 bytes (0x7922), stores the raw cmd value in a local struct, and calls dispatch_exec at 0x797b. dispatch_exec at 0x78a6 dereferences the struct pointer and at 0x78ac calls system() with the attacker-controlled string verbatim \u2014 no sanitization at any point in the chain.",
+          "confirmed_links": [
+            "config_to_variable",
+            "variable_to_gate",
+            "gate_to_sink",
+            "input_to_argument"
+          ],
+          "input_path": {
+            "entry_point": "/exec",
+            "method": "GET",
+            "param": "cmd",
+            "delivery": "struct_field",
+            "handler_fn": "handle_exec",
+            "hop_count": 3,
+            "taint_confirmed": true
+          },
+          "sanitization": {
+            "sanitization_present": true,
+            "always_active": false,
+            "bypassable": true,
+            "bypass_method": "The only blocking condition is exec_mode==0 (default). If the server is started with the exec-enabling CLI flag (sets global exec_mode=1 at 0xf1c4 via parse_commandline@0x105217), the entire /exec?cmd= path is open with zero shell-metacharacter filtering \u2014 the cmd value is passed verbatim to system().",
+            "config_gated": true,
+            "gate_variable": "exec_mode",
+            "gate_flag_or_key": "--exec-mode (CLI flag parsed in parse_commandline, LEA [0x10c117])",
+            "gate_source": "argv"
+          }
+        }
+      }
+    ]
+  },
+  "score": {
+    "sample": "007_darkhttpd_C1I3S1",
+    "verdict_correct": true,
+    "preconditions_correct": true,
+    "precondition_recall": 1.0,
+    "precondition_precision": 1.0,
+    "predicted_c_axis": "C1",
+    "expected_c_axis": "C1",
+    "predicted_s_axis": "S3",
+    "expected_s_axis": "S1",
+    "predicted_i_axis": "I3",
+    "expected_i_axis": "I3",
+    "false_exploitable": false,
+    "false_not_exploitable": false,
+    "gave_up": false,
+    "match_details": {
+      "matched": [
+        {
+          "configuration_type": "flag",
+          "configuration_parameter": "--exec-mode",
+          "configuration_value": null,
+          "sense": "present"
+        }
+      ],
+      "unmatched": [],
+      "extra": [],
+      "recall": 1.0,
+      "precision": 1.0
+    },
+    "predicted_verdict": "Exploitable",
+    "duration_s": null,
+    "expected_verdict": "Exploitable"
+  },
+  "log_path": "/home/ubuntu/anthropic/agent/eval_results/logs/007_darkhttpd_C1I3S1.log"
+}

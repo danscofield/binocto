@@ -1,0 +1,17 @@
+{
+  "sample": "074_lighttpd_C1I2S1",
+  "axes": {
+    "C": "C1",
+    "I": "I2",
+    "S": "S1"
+  },
+  "verified": "Exploitable",
+  "preconditions": [
+    {
+      "configuration_type": "flag",
+      "configuration_parameter": "--exec-mode",
+      "configuration_value": null,
+      "sense": "present"
+    }
+  ]
+}

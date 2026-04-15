@@ -1,0 +1,23 @@
+{
+  "sample": "107_libwebsockets_C1cI2S1",
+  "axes": {
+    "C": "C1b",
+    "I": "I2",
+    "S": "S1"
+  },
+  "verified": "Exploitable",
+  "preconditions": [
+    {
+      "configuration_type": "flag",
+      "configuration_parameter": "--exec-mode",
+      "configuration_value": null,
+      "sense": "present"
+    },
+    {
+      "configuration_type": "flag",
+      "configuration_parameter": "--exec-verbose",
+      "configuration_value": null,
+      "sense": "present"
+    }
+  ]
+}

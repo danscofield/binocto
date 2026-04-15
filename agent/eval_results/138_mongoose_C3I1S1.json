@@ -1,0 +1,124 @@
+{
+  "sample": "138_mongoose_C3I1S1",
+  "binary": "/home/ubuntu/anthropic/corpus/samples/138_mongoose_C3I1S1/mongoose_server",
+  "duration_s": 259.5,
+  "error": null,
+  "result": {
+    "binary": "/home/ubuntu/anthropic/corpus/samples/138_mongoose_C3I1S1/mongoose_server",
+    "verdict": "Exploitable",
+    "preconditions": [
+      {
+        "configuration_type": "file",
+        "configuration_parameter": "exec_mode",
+        "configuration_value": "1",
+        "sense": "present"
+      },
+      {
+        "configuration_type": "runtime_state",
+        "configuration_parameter": "/exec/init",
+        "configuration_value": "value of exec_secret key from config file (stored at exec_cfg+0x8)",
+        "sense": "present"
+      }
+    ],
+    "sink_results": [
+      {
+        "sink": {
+          "addr": 1061360,
+          "function": "system",
+          "arg_index": 0,
+          "caller": "handle_exec"
+        },
+        "verdict": "Exploitable",
+        "preconditions": [
+          {
+            "configuration_type": "file",
+            "configuration_parameter": "exec_mode",
+            "configuration_value": "1",
+            "sense": "present"
+          },
+          {
+            "configuration_type": "runtime_state",
+            "configuration_parameter": "/exec/init",
+            "configuration_value": "value of exec_secret key from config file (stored at exec_cfg+0x8)",
+            "sense": "present"
+          }
+        ],
+        "attempts": 1,
+        "evidence": {
+          "causal_chain": {
+            "config_to_variable": "At startup, read_exec_config() reads the config file supplied via --config and parses the 'exec_mode' key into the exec_cfg structure. If exec_mode is a non-zero integer, exec_cfg is populated and the exec subsystem is considered enabled; otherwise the exec handlers are never armed.",
+            "variable_to_gate": "handle_exec_init() (serving /exec/init) checks exec_cfg for a non-zero exec_mode before proceeding. It then reads the secret stored at exec_cfg+0x8 (the 'exec_secret' config-file value) and compares it against the 'token' query/body parameter supplied by the caller. Only when the token matches does it set exec_initialized = 1.",
+            "gate_to_sink": "handle_exec() (serving GET /exec) first verifies that exec_initialized == 1. If that condition is satisfied, it proceeds to extract the 'cmd' parameter and passes it directly to a shell execution sink (e.g. system()/popen()) without any sanitization.",
+            "input_to_argument": "The attacker supplies an arbitrary shell command string as the 'cmd' GET parameter to GET /exec. Because no sanitization is applied, the raw parameter value is forwarded verbatim as the argument to the shell execution sink, achieving OS command injection."
+          },
+          "causal_evidence": "All four causal links are confirmed by assembly. (1) config_to_variable: read_exec_config() at 0x2849 parses 'exec_mode' key via strcmp at 0x2966 and stores atoi() result into exec_cfg (0x2a520) at 0x2984; it also parses 'exec_secret' at 0x29d0 and strncpy's the value into exec_cfg+0x8 (0x2a528) at 0x29f2. main() calls read_exec_config() after matching '--config' CLI flag at 0x30bd. (2) variable_to_gate: fn() at 0x2e77 loads exec_cfg (0x2a520) and tests it; handle_exec_init() at 0x2a72 also checks exec_cfg, then at 0x2b98 loads exec_cfg+0x8 (exec_secret) and strcmp's it against the HTTP 'token' parameter at 0x2ba5; on match, sets exec_initialized (0x2a568)=1 at 0x2bda. fn() at 0x2ed3 checks exec_initialized before dispatching handle_exec. (3) gate_to_sink: fn() checks both exec_cfg!=0 (0x2ecf) and exec_initialized!=0 (0x2ed3), matches URL '/exec', then calls handle_exec at 0x2f1b with no further blocking. handle_exec calls system() at 0x2df0 (PLT 0x24f0, resolved to 0x1031f0) after a single emptiness check on the cmd buffer. (4) input_to_argument: handle_exec extracts the HTTP 'cmd' GET parameter via mg_http_get_var at 0x2daa into a stack buffer [rbp-0x110], then passes that buffer pointer directly as rdi to system() at 0x2df0 with no sanitization whatsoever.",
+          "confirmed_links": [
+            "config_to_variable",
+            "variable_to_gate",
+            "gate_to_sink",
+            "input_to_argument"
+          ],
+          "input_path": {
+            "entry_point": "/exec",
+            "method": "GET",
+            "param": "cmd",
+            "delivery": "direct",
+            "handler_fn": "handle_exec",
+            "hop_count": 2,
+            "taint_confirmed": true
+          },
+          "sanitization": {
+            "sanitization_present": false,
+            "always_active": false,
+            "bypassable": null,
+            "bypass_method": null,
+            "config_gated": false,
+            "gate_variable": null,
+            "gate_flag_or_key": null,
+            "gate_source": null
+          }
+        }
+      }
+    ]
+  },
+  "score": {
+    "sample": "138_mongoose_C3I1S1",
+    "verdict_correct": true,
+    "preconditions_correct": true,
+    "precondition_recall": 1.0,
+    "precondition_precision": 1.0,
+    "predicted_c_axis": "C3",
+    "expected_c_axis": "C3",
+    "predicted_s_axis": "S1",
+    "expected_s_axis": "S1",
+    "predicted_i_axis": "I2",
+    "expected_i_axis": "I1",
+    "false_exploitable": false,
+    "false_not_exploitable": false,
+    "gave_up": false,
+    "match_details": {
+      "matched": [
+        {
+          "configuration_type": "file",
+          "configuration_parameter": "exec_mode",
+          "configuration_value": "1",
+          "sense": "present"
+        },
+        {
+          "configuration_type": "runtime_state",
+          "configuration_parameter": "/exec/init",
+          "configuration_value": "s3cr3t",
+          "sense": "present"
+        }
+      ],
+      "unmatched": [],
+      "extra": [],
+      "recall": 1.0,
+      "precision": 1.0
+    },
+    "predicted_verdict": "Exploitable",
+    "duration_s": null,
+    "expected_verdict": "Exploitable"
+  },
+  "log_path": "/home/ubuntu/anthropic/agent/eval_results/logs/138_mongoose_C3I1S1.log"
+}

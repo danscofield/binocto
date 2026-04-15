@@ -1,0 +1,329 @@
+╭─── Claude Code v2.1.100 ─────────────────────────────────────────────────────╮
+│                                    │ Tips for getting started                │
+│            Welcome back!           │ Run /init to create a CLAUDE.md file w… │
+│                                    │ ─────────────────────────────────────── │
+│               ▐▛███▜▌              │ Recent activity                         │
+│              ▝▜█████▛▘             │ No recent activity                      │
+│                ▘▘ ▝▝               │                                         │
+│                                    │                                         │
+│   Sonnet 4.6 · API Usage Billing   │                                         │
+│     ~/anthropic/corpus/samples     │                                         │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+✻ Conversation compacted (ctrl+o for history)
+
+  ⎿  Read ../../.claude/settings.json (10 lines)
+  ⎿  Read samples/001_darkhttpd_C1I1S1/build.sh (19 lines)
+  ⎿  Read samples/001_darkhttpd_C1I1S1/PoC.sh (66 lines)
+  ⎿  Read samples/001_darkhttpd_C1I1S1/PROVENANCE (54 lines)
+  ⎿  Referenced file ../../../../tmp/darkhttpd_patched.c
+
+  Listed 6 directories (ctrl+o to expand)
+
+● Let me quickly scan each server's main source to understand injection points
+  before launching agents.
+
+  Listed 2 directories (ctrl+o to expand)
+
+● Bash(git -C /home/ubuntu/anthropic/corpus/darkhttpd log --oneline -1 && git -C
+       /home/ubuntu/anthropic/corpus/tinyhttpd log --oneline -1 && git -C
+      /home/ubuntu/anthro…)
+  ⎿  cc8e27b contrib notice
+     fbd25cf Update README.md
+     fae45b8 update readme
+     ---
+
+● Bash(git -C /home/ubuntu/anthropic/corpus/tinyhttpd log --oneline -1
+      2>/dev/null; git -C /home/ubuntu/anthropic/corpus/tiny-web-server log
+      --oneline -1 2>/dev/null;…)
+  ⎿  fbd25cf Update README.md
+     fae45b8 update readme
+     6029ae0 Release 1.30-16 to unstable
+     … +4 lines (ctrl+o to expand)
+
+● Bash(git -C /home/ubuntu/anthropic/corpus/lighttpd log --oneline -1
+      2>/dev/null; git -C /home/ubuntu/anthropic/corpus/lwan log --oneline -1
+      2>/dev/null; git -C /home…)
+  ⎿  3651e9b spelling suggestions from codespell (fixes #3303)
+     7508daa Fix fuzzing build
+     5def614 Merge pull request #3572 from h2o/kazuho/h3-client-dual-stack
+     … +4 lines (ctrl+o to expand)
+
+  Searched for 7 patterns, read 2 files, listed 5 directories (ctrl+o to expand)
+
+● Bash(find /home/ubuntu/anthropic/corpus/mongoose/tutorials -name "main.c" |
+      head -5 | xargs wc -l 2>/dev/null)
+  ⎿     76 /home/ubuntu/anthropic/corpus/mongoose/tutorials/webui/webui-log
+     in/main.c
+        53 /home/ubuntu/anthropic/corpus/mongoose/tutorials/webui/webui-pus
+     … +8 lines (ctrl+o to expand)
+
+  Listed 1 directory (ctrl+o to expand)
+
+● Now I have all the context needed. Let me launch all 15 parallel agents. Each
+  gets a self-contained prompt with axis templates, sample allocations, and
+  server-specific context.
+
+● 14 agents finished (ctrl+o to expand)
+   ├─ darkhttpd samples 002-008 · 141 tool uses · 65.2k tokens
+   │  ⎿  Done
+   ├─ tinyhttpd samples 009-016 · 80 tool uses · 83.8k tokens
+   │  ⎿  Done
+   ├─ tiny-web-server samples 017-024 · 52 tool uses · 65.7k tokens
+   │  ⎿  Done
+   ├─ mongoose samples 025-033 · 69 tool uses · 58.1k tokens
+   │  ⎿  Done
+   ├─ mini_httpd samples 034-042 · 100 tool uses · 92.6k tokens
+   │  ⎿  Done
+   ├─ civetweb samples 043-051 · 79 tool uses · 107.8k tokens
+   │  ⎿  Done
+   ├─ merecat samples 052-060 · 201 tool uses · 138.2k tokens
+   │  ⎿  Done
+   ├─ kore samples 061-069 · 216 tool uses · 163.9k tokens
+   │  ⎿  Done
+   ├─ lighttpd samples 070-078 · 108 tool uses · 105.6k tokens
+   │  ⎿  Done
+   ├─ lwan samples 079-085 · 146 tool uses · 137.7k tokens
+   │  ⎿  Done
+   ├─ h2o samples 086-092 · 113 tool uses · 110.4k tokens
+   │  ⎿  Done
+   ├─ onion samples 093-098 · 62 tool uses · 60.7k tokens
+   │  ⎿  Done
+   ├─ ulfius samples 099-104 · 70 tool uses · 52.7k tokens
+   │  ⎿  Done
+   └─ libwebsockets samples 105-110 · 69 tool uses · 62.4k tokens
+      ⎿  Done
+
+● 14 of 15 server groups done. Now launching the final seasocks agent:
+
+● Agent(seasocks samples 111-116)
+  ⎿  Done (95 tool uses · 97.5k tokens · 11m 39s)
+  (ctrl+o to expand)
+
+● All 15 agents completed. Let me do a final verification of the full corpus:
+
+  Listed 1 directory (ctrl+o to expand)
+
+● Bash(# Verify all samples have the required artifacts
+      missing=0…)
+  ⎿  Total missing artifacts: 0
+     Total samples: 116
+● All 116 samples are complete. Here's what was built:
+
+  116 samples across 15 servers, each with 5 artifacts: patch.diff, build.sh,
+  PoC.sh, PROVENANCE, and a compiled binary. All PoCs were verified end-to-end
+  (RCE confirmed + negative control gate check passed).
+
+  Coverage:
+
+  ┌─────────┬─────────────────┬─────────────────────────────┐
+  │ Samples │     Server      │      Axes represented       │
+  ├─────────┼─────────────────┼─────────────────────────────┤
+  │ 001–008 │ darkhttpd       │ C1×I1–I3×S1–S3              │
+  ├─────────┼─────────────────┼─────────────────────────────┤
+  │ 009–016 │ tinyhttpd       │ C1×I3S3, C2×all I/S combos  │
+  ├─────────┼─────────────────┼─────────────────────────────┤
+  │ 017–024 │ tiny-web-server │ C2×I3S2–S3, C3×I1–I2×all S  │
+  ├─────────┼─────────────────┼─────────────────────────────┤
+  │ 025–033 │ mongoose        │ C1×all 9 I/S combos         │
+  ├─────────┼─────────────────┼─────────────────────────────┤
+  │ 034–042 │ mini_httpd      │ C3×I1–I3×S1, C1–C2×I1–I3×S2 │
+  ├─────────┼─────────────────┼─────────────────────────────┤
+  │ 043–051 │ civetweb        │ C3×I1–I3×S2, C1–C2×I1–I3×S3 │
+  ├─────────┼─────────────────┼─────────────────────────────┤
+  │ 052–060 │ merecat         │ C3×I1–I3×S3, C1–C2×mixed    │
+  ├─────────┼─────────────────┼─────────────────────────────┤
+  │ 061–069 │ kore            │ C1–C3×I1–I3×mixed           │
+  ├─────────┼─────────────────┼─────────────────────────────┤
+  │ 070–078 │ lighttpd        │ C1–C3×I1–I3×mixed           │
+  ├─────────┼─────────────────┼─────────────────────────────┤
+  │ 079–085 │ lwan            │ C1–C3×I1–I3×mixed           │
+  ├─────────┼─────────────────┼─────────────────────────────┤
+  │ 086–092 │ h2o             │ C1–C3×I1–I3×mixed           │
+  ├─────────┼─────────────────┼─────────────────────────────┤
+  │ 093–098 │ onion           │ C1–C3×I1–I3×mixed           │
+  ├─────────┼─────────────────┼─────────────────────────────┤
+  │ 099–104 │ ulfius          │ C1–C3×I1–I3×mixed           │
+  ├─────────┼─────────────────┼─────────────────────────────┤
+  │ 105–110 │ libwebsockets   │ C1–C3×I1–I3×mixed           │
+  ├─────────┼─────────────────┼─────────────────────────────┤
+  │ 111–116 │ seasocks (C++)  │ C1–C3×I1–I3×mixed           │
+  └─────────┴─────────────────┴─────────────────────────────┘
+
+  All 27 axis combinations (3×3×3) are covered multiple times across the corpus.
+
+✻ Worked for 52m 19s
+
+❯ a lot of these look CLI gated. does that mean we just added command line      
+  flags? dont some of them parse config files, and we should have put the       
+  configuration option there?                                                   
+
+● You're right, and it's a meaningful flaw. The C axis was supposed to
+  distinguish mechanism of configuration, not just number of conditions:
+
+  - C1: Single CLI flag → easy to trace (arg → global → guard)
+  - C2: Config file field → harder (fopen/fgets/sscanf → struct → guard,
+  multiple hops through I/O)
+  - C3: Config file + runtime state, or multi-step state machine
+
+  What the agents did instead: C2 = two CLI flags in a struct, C3 = three CLI
+  flags + utility function. That's still CLI-gated — just more conditions. The
+  static analysis difficulty profile is almost identical to C1 from a tracer's
+  perspective.
+
+  The distinction matters enormously for the evaluation tool. Joern following a
+  chain of strcmp(argv[i], "--exec-mode") is trivial. Joern following
+  fopen(cfg_path) → fgets → sscanf → cfg.exec_enabled through two or three
+  function calls is a genuinely harder problem — and that's what C2/C3 should
+  stress-test.
+
+  Scope of the problem: roughly 71 samples need reworking (all C2 and C3).
+
+  Proposed fix by axis:
+
+  Axis: C2
+  Correct mechanism: Config file (INI/key=value) parsed by read_config(path),
+    stored in struct
+  Example: exec_mode = 1 in /tmp/server_NNN.conf passed via --config flag
+  ────────────────────────────────────────
+  Axis: C3
+  Correct mechanism: Config file plus a runtime condition (e.g. a second
+    /exec/init endpoint that sets exec_initialized, or a second parsed section)
+  Example: Config file sets exec_enabled=1 and exec_secret=abc123; runtime
+  checks
+    both and a request header token
+
+  For servers that already have native config file support (lighttpd.conf, h2o
+  YAML, kore config, merecat confuse), the C2/C3 options should hang off their
+  existing config file format. For simple single-file servers (darkhttpd,
+  tinyhttpd, etc.) the patch adds a minimal INI parser.
+
+  Do you want to rebuild all ~71 C2/C3 samples with proper config-file-gating,
+  or would you prefer a different split (e.g., keep C3 as "config file + runtime
+   state" and make C2 "config file only")?
+
+✻ Baked for 1m 9s
+
+❯ that is much more aligned with what i want. no need to remove the existing    
+  samples. we should just relabel them c1.5 or something and build an           
+  additional 71 samples for c2/c3 aligned with the above table. we should also  
+  drop a markdown file describing the c/i/s methodology and labeling, and       
+  document the corpus                                                           
+
+● Good plan. Here's what I'll do:
+
+  1. Relabel existing C2 → C1b (two CLI flags in struct) and C3 → C1c (three CLI
+   flags + utility fn) — both are still CLI-gated
+  2. Add 72 new proper C2 (config file) and C3 (config file + runtime state)
+  samples (117–188)
+  3. Drop CORPUS.md describing the full methodology
+
+  Let me do the renaming and documentation first, then launch the new sample
+  agents.
+
+  Listed 1 directory (ctrl+o to expand)
+
+● Bash(cd /home/ubuntu/anthropic/corpus/samples…)
+  ⎿  Done. Sample count:
+     116
+     C1b count: 36
+     … +2 lines (ctrl+o to expand)
+
+  Read 1 file (ctrl+o to expand)
+
+● Good. Now write the corpus documentation:
+
+● Write(~/anthropic/corpus/CORPUS.md)
+  ⎿  Wrote 204 lines to ../CORPUS.md
+      1 # Synthetic Command-Injection Corpus
+      2 
+      3 A corpus of C/C++ web servers patched with synthetic, config-gate
+        d command-injection
+      4 vulnerabilities, designed for evaluating agentic vulnerability an
+        alysis tools that
+      5 combine Joern CPG static analysis with angr symbolic execution.
+      6 
+      7 ---
+      8 
+      9 ## Purpose
+     … +194 lines (ctrl+o to expand)
+
+● Now launch the parallel agents for the 72 new C2/C3 samples:
+
+● 6 agents finished (ctrl+o to expand)
+   ├─ New C2/C3 samples for darkhttpd and tinyhttpd (117-128) · 176 tool uses ·
+      116.7k tokens
+   │  ⎿  Done
+   ├─New C2/C3 samples for tiny-web-server and mongoose (129-140) · 162 tool
+     uses · 42.9k tokens
+   │  ⎿  Done
+   ├─ New C2/C3 samples for mini_httpd and civetweb (141-152) · 116 tool uses ·
+      116.3k tokens
+   │  ⎿  Done
+   ├─ New C2/C3 samples for merecat and kore (153-164) · 164 tool uses · 63.7k
+      tokens
+   │  ⎿  Done
+   ├─New C2/C3 samples for lighttpd and lwan (165-176) · 118 tool uses · 165.3k
+     tokens
+   │  ⎿  Done
+   └─New C2/C3 samples for h2o, onion, ulfius, libwebsockets, seasocks (177-188)
+      · 186 tool uses · 60.7k tokens
+      ⎿  Done
+
+● Bash(cd /home/ubuntu/anthropic/corpus/samples…)
+  ⎿  === Total samples ===
+     188
+     … +19 lines (ctrl+o to expand)
+
+● Bash(cd /home/ubuntu/anthropic/corpus/samples
+      # The I axis count regex needs adjustment…)
+  ⎿  === By I axis (corrected) ===
+     I1: 63
+     I2: 64
+     … +41 lines (ctrl+o to expand)
+
+● All done. Here's the final corpus state:
+
+  188 total samples, all with complete artifacts (PROVENANCE, patch.diff,
+  build.sh, PoC.sh, binary):
+
+  ┌───────┬───────┬─────────────────────────────────────────────────────────┐
+  │  C    │ Count │                       Description                       │
+  │ axis  │       │                                                         │
+  ├───────┼───────┼─────────────────────────────────────────────────────────┤
+  │ C1    │ 45    │ Single CLI flag → global bool                           │
+  ├───────┼───────┼─────────────────────────────────────────────────────────┤
+  │ C1b   │ 36    │ Two CLI flags in struct (relabeled from former "C2")    │
+  ├───────┼───────┼─────────────────────────────────────────────────────────┤
+  │ C1c   │ 35    │ Three CLI flags + utility fn (relabeled from former     │
+  │       │       │ "C3")                                                   │
+  ├───────┼───────┼─────────────────────────────────────────────────────────┤
+  │ C2    │ 36    │ Config file parsed via fopen/fgets/sscanf → struct      │
+  │       │       │ fields                                                  │
+  ├───────┼───────┼─────────────────────────────────────────────────────────┤
+  │ C3    │ 36    │ Config file + runtime init endpoint (/exec/init?token=) │
+  └───────┴───────┴─────────────────────────────────────────────────────────┘
+
+  ┌────────────────────┬───────┬─────┬─────────────────┬───────┐
+  │       I axis       │ Count │     │     S axis      │ Count │
+  ├────────────────────┼───────┼─────┼─────────────────┼───────┤
+  │ I1 direct          │ 63    │     │ S1 none         │ 59    │
+  ├────────────────────┼───────┼─────┼─────────────────┼───────┤
+  │ I2 snprintf        │ 64    │     │ S2 bypassable   │ 65    │
+  ├────────────────────┼───────┼─────┼─────────────────┼───────┤
+  │ I3 struct dispatch │ 61    │     │ S3 config-gated │ 64    │
+  └────────────────────┴───────┴─────┴─────────────────┴───────┘
+
+  All 5×3×3 = 45 axis combinations are covered. The CORPUS.md at
+  /home/ubuntu/anthropic/corpus/CORPUS.md documents the full taxonomy,
+  including:
+  - The distinction between C1/C1b/C1c (CLI-only, analytically similar) vs C2
+  (requires modelling file I/O data flow) vs C3 (requires modelling file I/O +
+  inter-request state)
+  - The exact config file format and /exec/init protocol
+  - Per-server build details, artifact descriptions, and evaluation protocol
+
+✻ Worked for 44m 30s
+
+❯ /export                                                                       
+  ⎿  Export cancelled

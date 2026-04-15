@@ -1,0 +1,23 @@
+{
+  "sample": "188_seasocks_C3I3S1",
+  "axes": {
+    "C": "C3",
+    "I": "I3",
+    "S": "S1"
+  },
+  "verified": "Exploitable",
+  "preconditions": [
+    {
+      "configuration_type": "file",
+      "configuration_parameter": "exec_mode",
+      "configuration_value": "1",
+      "sense": "present"
+    },
+    {
+      "configuration_type": "runtime_state",
+      "configuration_parameter": "/exec/init",
+      "configuration_value": "s3cr3t",
+      "sense": "present"
+    }
+  ]
+}

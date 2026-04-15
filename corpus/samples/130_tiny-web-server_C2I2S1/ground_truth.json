@@ -1,0 +1,23 @@
+{
+  "sample": "130_tiny-web-server_C2I2S1",
+  "axes": {
+    "C": "C2",
+    "I": "I2",
+    "S": "S1"
+  },
+  "verified": "Exploitable",
+  "preconditions": [
+    {
+      "configuration_type": "file",
+      "configuration_parameter": "exec_mode",
+      "configuration_value": "1",
+      "sense": "present"
+    },
+    {
+      "configuration_type": "file",
+      "configuration_parameter": "exec_logging",
+      "configuration_value": "1",
+      "sense": "present"
+    }
+  ]
+}

@@ -1,0 +1,178 @@
+{
+  "sample": "056_merecat_C1I2S2",
+  "binary": "/home/ubuntu/anthropic/corpus/samples/056_merecat_C1I2S2/merecat",
+  "duration_s": 479.8,
+  "error": null,
+  "result": {
+    "binary": "/home/ubuntu/anthropic/corpus/samples/056_merecat_C1I2S2/merecat",
+    "verdict": "Exploitable",
+    "preconditions": [
+      {
+        "configuration_type": "flag",
+        "configuration_parameter": "--exec-mode",
+        "configuration_value": null,
+        "sense": "present"
+      }
+    ],
+    "sink_results": [
+      {
+        "sink": {
+          "addr": 1126322,
+          "function": "execve",
+          "arg_index": 0,
+          "caller": "cgi"
+        },
+        "verdict": "Exploitable",
+        "preconditions": [
+          {
+            "configuration_type": "flag",
+            "configuration_parameter": "--exec-mode",
+            "configuration_value": null,
+            "sense": "absent"
+          },
+          {
+            "configuration_type": "file",
+            "configuration_parameter": "cgi_pattern",
+            "configuration_value": "**.cgi|/cgi-bin/*",
+            "sense": "present"
+          }
+        ],
+        "attempts": 1,
+        "evidence": {
+          "causal_chain": {
+            "config_to_variable": "At process startup, main() inspects argv for '--exec-mode'. When the flag is absent, exec_mode remains 0. Separately, /etc/merecat.conf supplies cgi_pattern (defaulting to '**.cgi|/cgi-bin/*'), which is loaded into the httpd configuration structure and used by is_cgi() to decide whether an incoming URL is treated as a CGI request.",
+            "variable_to_gate": "In httpd_start_request(), is_cgi() tests the request URI against cgi_pattern; a non-zero return value routes the request into the CGI execution path. Simultaneously, the exec_mode == 0 condition means the TEST R13D,R13D / JZ branch at 0x130c8 is taken, bypassing the entire sanitization block (the strchr('|') filter at 0x13252 is never reached).",
+            "gate_to_sink": "With exec_mode == 0 the sanitization block is skipped entirely, and with is_cgi() returning non-zero the request URI is passed directly to the CGI execution sink (execve/popen or equivalent) without any shell-metacharacter filtering, allowing arbitrary OS command injection via the URL.",
+            "input_to_argument": "The attacker supplies a crafted HTTP GET request whose URL path matches the configured cgi_pattern (e.g. '/cgi-bin/vuln.cgi;id'). httpd_start_request() stores the raw request URI in a struct field that is forwarded, without sanitization, as the argument to the CGI execution sink, giving the attacker direct control over the executed command string."
+          },
+          "causal_evidence": "All four causal links are confirmed by assembly. (1) config_to_variable: main() at 0x89e8 compares argv against '--exec-mode' (string confirmed in binary); when absent, exec_mode at 0x27618 stays 0. conf_init() at 0x1a9ae stores cfg_title() result into cgi_pattern at 0x26d50; default '**.cgi|/cgi-bin/*' confirmed in binary strings. (2) variable_to_gate: httpd_start_request() at 0x130be loads exec_mode from 0x27618 into r13d; at 0x130c8 'test r13d,r13d' is the exact gate; 'je 0x130f0' at 0x130cb takes the normal CGI path when exec_mode==0, bypassing the exec-endpoint block. (3) gate_to_sink: the taken branch reaches is_cgi() at 0x1318d which tests the URI against cgi_pattern; on non-zero return, execution falls through to 'jmp cgi' at 0x131fb; inside cgi() at 0x12db2 'call execve@plt' is reached with no additional blocking conditions \u2014 the strchr('|') sanitization at 0x1324f is in the exec_mode!=0 branch and is never reached when exec_mode==0. (4) input_to_argument: cgi() loads hc->expnfilename (the HTTP request URI) from [rbx+0x168] into r14 at 0x12f67, then passes it directly as rdi (first argument) to execve at 0x12daf, with no shell-metacharacter filtering applied on the exec_mode==0 path.",
+          "confirmed_links": [
+            "config_to_variable",
+            "variable_to_gate",
+            "gate_to_sink",
+            "input_to_argument"
+          ],
+          "input_path": {
+            "entry_point": "/<cgi-script-path>",
+            "method": "GET",
+            "param": "URL path (request URI)",
+            "delivery": "struct_field",
+            "handler_fn": "httpd_start_request",
+            "hop_count": 3,
+            "taint_confirmed": true
+          },
+          "sanitization": {
+            "sanitization_present": true,
+            "always_active": false,
+            "bypassable": true,
+            "bypass_method": "The strchr('|') filter at 0x13252 is inside the exec_mode != 0 branch (guarded by TEST R13D,R13D / JZ at 0x130c8). exec_mode is only set to 1 when the '--' CLI argument is passed to main (0x89e8). In normal HTTP server operation exec_mode == 0, so the entire sanitization block is skipped. Even when active, it only checks for '|' (0x7c) and not ';', '&', backtick, '$', newline, or other shell metacharacters.",
+            "config_gated": true,
+            "gate_variable": "exec_mode",
+            "gate_flag_or_key": "--",
+            "gate_source": "argv"
+          }
+        }
+      },
+      {
+        "sink": {
+          "addr": 1145536,
+          "function": "popen",
+          "arg_index": 0,
+          "caller": "stack_trace"
+        },
+        "verdict": "NotExploitable",
+        "preconditions": [],
+        "attempts": 0,
+        "evidence": {
+          "reason": "input_not_reachable"
+        }
+      },
+      {
+        "sink": {
+          "addr": 1129190,
+          "function": "system",
+          "arg_index": 0,
+          "caller": "httpd_start_request"
+        },
+        "verdict": "Exploitable",
+        "preconditions": [
+          {
+            "configuration_type": "flag",
+            "configuration_parameter": "--exec-mode",
+            "configuration_value": null,
+            "sense": "present"
+          }
+        ],
+        "attempts": 1,
+        "evidence": {
+          "causal_chain": {
+            "config_to_variable": "At process startup, main() parses argv and sets the integer variable exec_mode to 1 when the --exec-mode flag is present. Without this flag exec_mode remains 0 and the entire /exec handler branch is skipped unconditionally.",
+            "variable_to_gate": "Inside httpd_start_request(), an early conditional checks exec_mode == 1. If false the function returns or falls through without processing the /exec path, so the sink is never reached. Only when exec_mode == 1 does execution continue into the exec dispatch block.",
+            "gate_to_sink": "With exec_mode == 1, httpd_start_request() inspects hc->expnfilename: if the URL starts with /exec it enters the command-execution branch. It then reads hc->query, verifies it starts with 'cmd=' and that the value is non-empty and does not begin with '|'. The sanitization check calls strchr() only for the pipe character (0x7c); all other shell metacharacters pass through. The surviving query value is interpolated into a command string via snprintf() and passed directly to system(), which is the vulnerable sink.",
+            "input_to_argument": "The attacker supplies a GET request to /exec?cmd=<payload>. The HTTP server stores the query string in hc->query. After the 'cmd=' prefix is stripped and the single-pipe check is bypassed (by using any other shell metacharacter such as ';', '&', '`', '$(...)', etc.), the remainder of the attacker-controlled string is written into an snprintf-constructed buffer without further sanitization and handed verbatim to system(), achieving OS command injection."
+          },
+          "causal_evidence": "All four causal links are confirmed by assembly. Link 1: main() at 0x89d9 loads the literal string '--exec-mode' (confirmed in binary strings) into r13, then at 0x8a02 calls strcmp(argv[i], '--exec-mode'); on match (je\u21920x89e8) it stores 1 into the global exec_mode at 0x27618 (mov DWORD PTR [rax],0x1 at 0x89f3). Link 2: httpd_start_request() at 0x130be loads exec_mode from the same address 0x27618 into r13d, tests it at 0x130c8, and jumps away (je 0x130f0) if zero \u2014 the entire exec branch is skipped when exec_mode==0. Link 3: With exec_mode!=0, execution falls through to strncmp(hc->expnfilename, '/exec', 5) at 0x130e3; on match, strncmp(hc->query, 'cmd=', 4) at 0x1322f; after verifying non-empty value, strchr(query+4, 0x7c) at 0x13252 checks only for the pipe character '|' \u2014 if absent (je 0x13f02), execution reaches snprintf at 0x113f1e building a command buffer from the user-supplied query value, then system() at 0x113f26 with that buffer as argument. Link 4: hc->query (offset 0x180 in the httpd_conn struct) is the HTTP GET query string; after stripping the 4-byte 'cmd=' prefix (rbp+=4 at 0x13246), the attacker-controlled remainder is passed verbatim as the snprintf argument and thence to system(), with no sanitization of shell metacharacters other than '|'.",
+          "confirmed_links": [
+            "config_to_variable",
+            "variable_to_gate",
+            "gate_to_sink",
+            "input_to_argument"
+          ],
+          "input_path": {
+            "entry_point": "/exec",
+            "method": "GET",
+            "param": "cmd",
+            "delivery": "snprintf_buffer",
+            "handler_fn": "httpd_start_request",
+            "hop_count": 2,
+            "taint_confirmed": true
+          },
+          "sanitization": {
+            "sanitization_present": true,
+            "always_active": false,
+            "bypassable": true,
+            "bypass_method": "strchr only checks for '|' (0x7c). All other shell metacharacters \u2014 ';', '&', '`', '$(...)', newline, '>', '<', etc. \u2014 pass through unfiltered and reach system() directly via snprintf-constructed command string.",
+            "config_gated": true,
+            "gate_variable": "exec_mode",
+            "gate_flag_or_key": "--exec",
+            "gate_source": "argv"
+          }
+        }
+      }
+    ]
+  },
+  "score": {
+    "sample": "056_merecat_C1I2S2",
+    "verdict_correct": true,
+    "preconditions_correct": true,
+    "precondition_recall": 1.0,
+    "precondition_precision": 1.0,
+    "predicted_c_axis": "C1",
+    "expected_c_axis": "C1",
+    "predicted_s_axis": "S3",
+    "expected_s_axis": "S2",
+    "predicted_i_axis": "I2",
+    "expected_i_axis": "I2",
+    "false_exploitable": false,
+    "false_not_exploitable": false,
+    "gave_up": false,
+    "match_details": {
+      "matched": [
+        {
+          "configuration_type": "flag",
+          "configuration_parameter": "--exec-mode",
+          "configuration_value": null,
+          "sense": "present"
+        }
+      ],
+      "unmatched": [],
+      "extra": [],
+      "recall": 1.0,
+      "precision": 1.0
+    },
+    "predicted_verdict": "Exploitable",
+    "duration_s": null,
+    "expected_verdict": "Exploitable"
+  },
+  "log_path": "/home/ubuntu/anthropic/agent/eval_results/logs/056_merecat_C1I2S2.log"
+}

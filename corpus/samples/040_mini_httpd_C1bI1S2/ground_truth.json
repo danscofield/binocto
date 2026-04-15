@@ -1,0 +1,23 @@
+{
+  "sample": "040_mini_httpd_C1bI1S2",
+  "axes": {
+    "C": "C1b",
+    "I": "I1",
+    "S": "S2"
+  },
+  "verified": "Exploitable",
+  "preconditions": [
+    {
+      "configuration_type": "flag",
+      "configuration_parameter": "--exec-mode",
+      "configuration_value": null,
+      "sense": "present"
+    },
+    {
+      "configuration_type": "flag",
+      "configuration_parameter": "--exec-logging",
+      "configuration_value": null,
+      "sense": "present"
+    }
+  ]
+}

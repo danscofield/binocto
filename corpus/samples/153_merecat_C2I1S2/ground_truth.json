@@ -1,0 +1,23 @@
+{
+  "sample": "153_merecat_C2I1S2",
+  "axes": {
+    "C": "C2",
+    "I": "I1",
+    "S": "S2"
+  },
+  "verified": "Exploitable",
+  "preconditions": [
+    {
+      "configuration_type": "file",
+      "configuration_parameter": "exec_mode",
+      "configuration_value": "1",
+      "sense": "present"
+    },
+    {
+      "configuration_type": "file",
+      "configuration_parameter": "exec_logging",
+      "configuration_value": "1",
+      "sense": "present"
+    }
+  ]
+}

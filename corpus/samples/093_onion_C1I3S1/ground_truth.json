@@ -1,0 +1,17 @@
+{
+  "sample": "093_onion_C1I3S1",
+  "axes": {
+    "C": "C1",
+    "I": "I3",
+    "S": "S1"
+  },
+  "verified": "Exploitable",
+  "preconditions": [
+    {
+      "configuration_type": "flag",
+      "configuration_parameter": "--exec-mode",
+      "configuration_value": null,
+      "sense": "present"
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "sample": "104_ulfius_C1bI2S1",
+  "axes": {
+    "C": "C1b",
+    "I": "I2",
+    "S": "S1"
+  },
+  "verified": "Exploitable",
+  "preconditions": [
+    {
+      "configuration_type": "flag",
+      "configuration_parameter": "--exec-enabled",
+      "configuration_value": null,
+      "sense": "present"
+    },
+    {
+      "configuration_type": "flag",
+      "configuration_parameter": "--diag-enabled",
+      "configuration_value": null,
+      "sense": "present"
+    }
+  ]
+}

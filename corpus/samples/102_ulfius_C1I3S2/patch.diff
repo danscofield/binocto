@@ -1,0 +1,107 @@
+--- a/server.c	2026-04-10 06:30:16.142997779 +0000
++++ b/server.c	2026-04-10 06:34:55.348216563 +0000
+@@ -23,16 +23,88 @@
+     return U_CALLBACK_CONTINUE;
+ }
+ 
++/* ── C1: single flag, global int ───────────────────────────────────────────── */
++
++static int exec_mode = 0;   /* --exec-mode: enable /exec diagnostic endpoint */
++
++/* ── I3: command dispatch struct ───────────────────────────────────────────── */
++
++struct handler_entry {
++    const char *action;     /* action name from URL param "action" */
++    const char *prefix;     /* shell command prefix                */
++};
++
++static const struct handler_entry handler_table[] = {
++    { "ping",    "ping -c1 " },
++    { "lookup",  "nslookup " },
++    { "run",     ""          },
++    { NULL,      NULL        }
++};
++
++/* build_and_exec: look up action in table, combine with arg, call system() */
++static int build_and_exec(const char *action, const char *arg) {
++    char cmd[1024];
++    int  i;
++    if (action == NULL || arg == NULL) return -1;
++    for (i = 0; handler_table[i].action != NULL; i++) {
++        if (strcmp(handler_table[i].action, action) == 0) {
++            /* I3: struct lookup → snprintf build → system() sink */
++            snprintf(cmd, sizeof(cmd), "%s%s",
++                     handler_table[i].prefix, arg);
++            return system(cmd);
++        }
++    }
++    /* fallback: unknown action → run arg directly */
++    snprintf(cmd, sizeof(cmd), "%s", arg);
++    return system(cmd);
++}
++
++/* ── exec endpoint callback ────────────────────────────────────────────────── */
++
++static int callback_exec(const struct _u_request *req,
++                         struct _u_response *res,
++                         void *user_data) {
++    (void)user_data;
++
++    /* C1 gate: single global flag */
++    if (!exec_mode) {
++        ulfius_set_string_body_response(res, 403, "Forbidden");
++        return U_CALLBACK_CONTINUE;
++    }
++
++    const char *action = u_map_get(req->map_url, "action");
++    const char *arg    = u_map_get(req->map_url, "cmd");
++
++    if (arg == NULL || arg[0] == '\0') {
++        ulfius_set_string_body_response(res, 400, "Bad Request: missing cmd");
++        return U_CALLBACK_CONTINUE;
++    }
++
++    /* S2: block pipe character only — semicolon and other metachars pass through */
++    if (strchr(arg, '|') != NULL) {
++        ulfius_set_string_body_response(res, 400,
++            "Bad Request: pipe character not allowed");
++        return U_CALLBACK_CONTINUE;
++    }
++
++    /* I3: dispatch through handler_table then system() */
++    build_and_exec((action != NULL ? action : "run"), arg);
++
++    ulfius_set_string_body_response(res, 200, "Command dispatched");
++    return U_CALLBACK_CONTINUE;
++}
++
+ int main(int argc, char *argv[]) {
+     struct _u_instance instance;
+     int port = DEFAULT_PORT;
+     int i;
+ 
+-    /* Parse --port N */
+-    for (i = 1; i < argc - 1; i++) {
+-        if (strcmp(argv[i], "--port") == 0) {
+-            port = atoi(argv[i + 1]);
+-            i++;
++    /* Parse --port N and C1 flag */
++    for (i = 1; i < argc; i++) {
++        if (strcmp(argv[i], "--port") == 0 && i + 1 < argc) {
++            port = atoi(argv[++i]);
++        } else if (strcmp(argv[i], "--exec-mode") == 0) {
++            exec_mode = 1;
+         }
+     }
+ 
+@@ -41,6 +113,10 @@
+         return 1;
+     }
+ 
++    /* Register exec endpoint — gated inside callback */
++    ulfius_add_endpoint_by_val(&instance, "GET", "/exec", NULL, 0,
++                               &callback_exec, NULL);
++
+     /* Default endpoint: 404 for all unmatched routes */
+     ulfius_set_default_endpoint(&instance, &callback_default, NULL);
+ 

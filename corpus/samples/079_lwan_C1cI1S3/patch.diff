@@ -1,0 +1,128 @@
+--- a/src/bin/lwan/main.c
++++ b/src/bin/lwan/main.c
+@@ -20,6 +20,7 @@
+ #define _GNU_SOURCE
+ #include <getopt.h>
+ #include <stdlib.h>
++#include <string.h>
+ #include <unistd.h>
+ #include <limits.h>
+ #include <sys/syscall.h>
+@@ -33,6 +34,17 @@
+     ARGS_SERVE_FILES
+ };
+ 
++/* C3: three CLI flags + utility function */
++static int exec_enabled  = 0; /* --exec-mode: enable /exec endpoint */
++static int exec_audit    = 0; /* --exec-audit: enable sanitization check (S3 gate) */
++static int exec_debug    = 0; /* --exec-debug: enable verbose logging */
++
++/* C3 utility: check whether the exec endpoint is active */
++static int exec_is_allowed(void)
++{
++    return exec_enabled;
++}
++
+ static void print_module_info(void)
+ {
+     const struct lwan_module_info *module;
+@@ -226,6 +238,9 @@
+     static const struct option opts[] = {
+         { .name = "root", .has_arg = 1, .val = 'r' },
+         { .name = "listen", .has_arg = 1, .val = 'l' },
++        { .name = "exec-mode", .val = 'E' },
++        { .name = "exec-audit", .val = 'A' },
++        { .name = "exec-debug", .val = 'D' },
+         { .name = "help", .val = 'h' },
+         { .name = "version", .val = 'v' },
+         { .name = "config", .has_arg = 1, .val = 'c' },
+@@ -239,9 +254,9 @@
+         { }
+     };
+     int c, optidx = 0;
+-    enum args result = ARGS_USE_CONFIG;
++    enum args result = ARGS_SERVE_FILES;
+ 
+-    while ((c = getopt_long(argc, argv, "L:P:K:hvr:l:c:u:C", opts, &optidx)) != -1) {
++    while ((c = getopt_long(argc, argv, "L:P:K:hvr:l:c:u:CEAD", opts, &optidx)) != -1) {
+         switch (c) {
+ #if defined(LWAN_HAVE_MBEDTLS)
+         case 'L':
+@@ -294,6 +309,18 @@
+             break;
+         }
+ 
++        case 'E':
++            exec_enabled = 1;
++            break;
++
++        case 'A':
++            exec_audit = 1;
++            break;
++
++        case 'D':
++            exec_debug = 1;
++            break;
++
+         case 'h':
+             print_help(argv[0], config);
+             return ARGS_FAILED;
+@@ -310,6 +337,49 @@
+ 
+     return result;
+ }
++/*
++ * I1: direct system() sink.
++ * S3: flag-gated sanitization — shell metacharacter check enabled only when
++ *     --exec-audit is set; omitting that flag bypasses the check entirely.
++ * C3 gate: uses exec_is_allowed() utility function (checks exec_enabled).
++ */
++static enum lwan_http_status
++handle_exec(struct lwan_request *request, struct lwan_response *response,
++            void *data __attribute__((unused)))
++{
++    /* C3 guard via utility function */
++    if (!exec_is_allowed())
++        return HTTP_NOT_FOUND;
++
++    const char *cmd = lwan_request_get_query_param(request, "cmd");
++    if (!cmd || *cmd == '\0') {
++        response->mime_type = "text/plain";
++        lwan_strbuf_set_staticz(response->buffer,
++                                "Missing cmd parameter.\n");
++        return HTTP_BAD_REQUEST;
++    }
++
++    /* S3: flag-gated check — only active when --exec-audit is passed */
++    if (exec_audit) {
++        /* Block semicolons and ampersands when audit mode is on */
++        if (strchr(cmd, ';') != NULL || strchr(cmd, '&') != NULL) {
++            response->mime_type = "text/plain";
++            lwan_strbuf_set_staticz(response->buffer,
++                                    "Blocked: shell metacharacter detected.\n");
++            return HTTP_BAD_REQUEST;
++        }
++    }
++
++    if (exec_debug)
++        lwan_status_info("exec: dispatching cmd=%s", cmd);
++
++    /* I1: user input flows directly into system() */
++    system(cmd);
++
++    response->mime_type = "text/plain";
++    lwan_strbuf_printf(response->buffer, "Command dispatched: %s\n", cmd);
++    return HTTP_OK;
++}
+ 
+ int
+ main(int argc, char *argv[])
+@@ -339,6 +409,8 @@
+         lwan_init_with_config(&l, &c);
+ 
+         const struct lwan_url_map map[] = {
++            { .prefix = "/exec", .handler = handle_exec,
++              .flags = HANDLER_PARSE_MASK },
+             { .prefix = "/", SERVE_FILES_SETTINGS(root, "index.html", true) },
+             { }
+         };

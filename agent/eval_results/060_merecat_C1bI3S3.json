@@ -1,0 +1,220 @@
+{
+  "sample": "060_merecat_C1bI3S3",
+  "binary": "/home/ubuntu/anthropic/corpus/samples/060_merecat_C1bI3S3/merecat",
+  "duration_s": 438.6,
+  "error": null,
+  "result": {
+    "binary": "/home/ubuntu/anthropic/corpus/samples/060_merecat_C1bI3S3/merecat",
+    "verdict": "Exploitable",
+    "preconditions": [
+      {
+        "configuration_type": "flag",
+        "configuration_parameter": "--exec-mode",
+        "configuration_value": null,
+        "sense": "present"
+      },
+      {
+        "configuration_type": "flag",
+        "configuration_parameter": "--exec-logging",
+        "configuration_value": null,
+        "sense": "present"
+      },
+      {
+        "configuration_type": "flag",
+        "configuration_parameter": "--strict-exec",
+        "configuration_value": null,
+        "sense": "absent"
+      }
+    ],
+    "sink_results": [
+      {
+        "sink": {
+          "addr": 1125906,
+          "function": "execve",
+          "arg_index": 0,
+          "caller": "cgi"
+        },
+        "verdict": "Exploitable",
+        "preconditions": [
+          {
+            "configuration_type": "flag",
+            "configuration_parameter": "--exec-mode",
+            "configuration_value": null,
+            "sense": "present"
+          },
+          {
+            "configuration_type": "flag",
+            "configuration_parameter": "--exec-logging",
+            "configuration_value": null,
+            "sense": "present"
+          },
+          {
+            "configuration_type": "flag",
+            "configuration_parameter": "--strict-exec",
+            "configuration_value": null,
+            "sense": "absent"
+          }
+        ],
+        "attempts": 1,
+        "evidence": {
+          "causal_chain": {
+            "config_to_variable": "At process startup, main() parses argv: '--exec-mode' sets exec_cfg[0]=1, '--exec-logging' sets exec_cfg[4]=1, and '--strict-exec' (if present) sets exec_strict to a non-zero value. Without '--strict-exec', exec_strict remains 0 (its default).",
+            "variable_to_gate": "Inside the exec request handler (reached via httpd_start_request when the request URL matches '/exec'), the code checks exec_cfg[0]==1 and exec_cfg[4]==1 before proceeding into the exec pipeline. A further branch tests exec_strict: if non-zero, execution reaches the strpbrk metacharacter filter at 0x113eab; if zero (i.e. '--strict-exec' absent), the filter block is skipped entirely.",
+            "gate_to_sink": "With exec_cfg[0] and exec_cfg[4] both set to 1 the handler enters the exec pipeline. Because exec_strict==0 the strpbrk sanitization branch is bypassed, and the query string passes only through strdecode() (URL-decode) before being assembled into an argv array and handed directly to execve().",
+            "input_to_argument": "An HTTP GET request to '/cgi-bin/<script>' carries attacker-controlled data in the query string (everything after '?'). httpd_start_request extracts this string into a struct field, which is forwarded through up to three call hops. After strdecode() performs URL-decoding (the only transformation applied when exec_strict==0), the decoded string is placed verbatim into the argv[] array passed to execve(), giving the attacker direct control over the command and its arguments."
+          },
+          "causal_evidence": "All four causal links are confirmed by assembly evidence. (1) config_to_variable: main() at 0x89e8 stores 1 into exec_cfg[0] (0x27620) when '--exec-mode' is present; at 0x8a2e stores 1 into exec_cfg[1] (0x27624) for '--exec-logging'; at 0x8ab2 stores 1 into exec_strict (0x27618) for '--strict-exec'. (2) variable_to_gate: httpd_start_request() at 0x11311e\u20130x113134 loads exec_cfg[0] from 0x127620 and exec_cfg[1] from 0x127624, testing both; if either is zero the exec path is skipped. At 0x113283\u20130x113291, exec_strict is loaded from 0x127618 into R12D. (3) gate_to_sink: At 0x113266 the URL is compared to '/exec' (5 bytes); at 0x1132a8 the query string is compared to 'cmd=' (4 bytes). At 0x113e9c, TEST R12D,R12D \u2014 when exec_strict==0 (--strict-exec absent), the branch at 0x113e9f jumps to 0x113eb9, bypassing the strpbrk metacharacter filter at 0x113eab. Execution falls through to snprintf at 0x113ed5 and then system() at 0x113edd. (4) input_to_argument: The HTTP query string (everything after '?' in the /exec request) is stored in the httpd_conn struct at offset 0x180 (rbx+0x180), extracted as the 'cmd=' parameter value, passed through snprintf into a stack buffer, and handed directly to system() \u2014 giving the attacker full shell command injection. Note: the execve() at 0x112e12 is in the separate 'cgi' function for CGI script execution; the actual command injection sink for the /exec endpoint is system() at 0x113edd in httpd_start_request().",
+          "confirmed_links": [
+            "config_to_variable",
+            "variable_to_gate",
+            "gate_to_sink",
+            "input_to_argument"
+          ],
+          "input_path": {
+            "entry_point": "/cgi-bin/<script>",
+            "method": "GET",
+            "param": "query string (after '?' in URL)",
+            "delivery": "struct_field",
+            "handler_fn": "httpd_start_request",
+            "hop_count": 3,
+            "taint_confirmed": true
+          },
+          "sanitization": {
+            "sanitization_present": true,
+            "always_active": false,
+            "bypassable": true,
+            "bypass_method": "The strpbrk metacharacter filter at 0x113eab is only reached when the exec_strict flag (global at 0x127618) is non-zero, which requires the --exec-strict CLI flag to be passed at server startup. Without --exec-strict (the default), the filter is skipped entirely and the query string flows unsanitized through strdecode() (URL-decode only) directly into execve() argv.",
+            "config_gated": true,
+            "gate_variable": "exec_strict",
+            "gate_flag_or_key": "--exec-strict",
+            "gate_source": "argv"
+          }
+        }
+      },
+      {
+        "sink": {
+          "addr": 1130205,
+          "function": "system",
+          "arg_index": 0,
+          "caller": "httpd_start_request"
+        },
+        "verdict": "Exploitable",
+        "preconditions": [
+          {
+            "configuration_type": "flag",
+            "configuration_parameter": "--exec-mode",
+            "configuration_value": null,
+            "sense": "present"
+          },
+          {
+            "configuration_type": "flag",
+            "configuration_parameter": "--exec-logging",
+            "configuration_value": null,
+            "sense": "present"
+          },
+          {
+            "configuration_type": "flag",
+            "configuration_parameter": "--strict-exec",
+            "configuration_value": null,
+            "sense": "absent"
+          }
+        ],
+        "attempts": 1,
+        "evidence": {
+          "causal_chain": {
+            "config_to_variable": "At process startup, main() parses argv: presence of '--exec-mode' sets exec_cfg[0]=1, presence of '--exec-logging' sets exec_cfg[1]=1, and presence of '--strict-exec' sets exec_strict=1 (global at 0x127618); absence of '--strict-exec' leaves exec_strict=0.",
+            "variable_to_gate": "Inside the /exec request handler (httpd_start_request, 2 hops), exec_cfg[0] and exec_cfg[1] are each tested against 1; if either is not 1 the handler returns early and the sink is never reached. Separately, TEST R12D,R12D at 0x113e9c checks exec_strict: when exec_strict==0 the branch jumps directly past the strpbrk metacharacter sanitization block, bypassing it entirely.",
+            "gate_to_sink": "With exec_cfg[0]==1 and exec_cfg[1]==1 the handler proceeds to command construction; with exec_strict==0 the strpbrk check is skipped, so the unsanitized command string is passed directly into snprintf to build the shell command buffer, which is then handed to system().",
+            "input_to_argument": "An HTTP GET request to /exec carries attacker-controlled shell metacharacters in the query string after the 'POST' prefix (e.g. ?POSTcmd=<payload>). The handler extracts the content following 'POST', copies it via snprintf into the command buffer without sanitization (sanitization bypassed as above), and that buffer is the argument to system(), giving the attacker arbitrary OS command execution."
+          },
+          "causal_evidence": "main() at 0x89ef stores 1 into exec_cfg[0] (0x27620) on '--exec-mode', at 0x8a2e stores 1 into exec_cfg[1] (0x27624) on '--exec-logging', and at 0x8ab2 stores 1 into exec_strict (0x27618) on '--strict-exec'; absence of '--strict-exec' leaves exec_strict=0. In httpd_start_request, 0x13125/0x13128 tests exec_cfg[0] (JE skips exec path), 0x1312d/0x13131 tests exec_cfg[1] (JNE enters exec path at 0x13250); 0x13266 strncmp checks URL prefix '/exec', 0x13291 loads exec_strict into r12d. At 0x113e9c TEST r12d,r12d / JZ 0x113eb9: when exec_strict==0 the strpbrk metacharacter check (0x113eab, pattern '|;&`$(){}' at 0x11f724) is bypassed entirely. Execution falls through to 0x113eb9 where r12=[rsp+0x240] (command buffer), rbp=hc->query (HTTP query string from [rbx+0x180]), snprintf at 0x113ed5 builds the shell command from the unsanitized query string, and system() is called at 0x113edd with that buffer as its sole argument.",
+          "confirmed_links": [
+            "config_to_variable",
+            "variable_to_gate",
+            "gate_to_sink",
+            "input_to_argument"
+          ],
+          "input_path": {
+            "entry_point": "/exec",
+            "method": "GET",
+            "param": "query_string (URL ?POST<cmd>, content after 'POST' prefix)",
+            "delivery": "snprintf_buffer",
+            "handler_fn": "httpd_start_request",
+            "hop_count": 2,
+            "taint_confirmed": true
+          },
+          "sanitization": {
+            "sanitization_present": true,
+            "always_active": false,
+            "bypassable": true,
+            "bypass_method": "strpbrk metacharacter check is skipped entirely when the '--exec-strict' CLI flag is absent (exec_strict global at 0x127618 == 0); TEST R12D,R12D at 0x113e9c branches over strpbrk directly to snprintf+system()",
+            "config_gated": true,
+            "gate_variable": "exec_strict",
+            "gate_flag_or_key": "--exec-strict",
+            "gate_source": "argv"
+          }
+        }
+      },
+      {
+        "sink": {
+          "addr": 1144640,
+          "function": "popen",
+          "arg_index": 0,
+          "caller": "stack_trace"
+        },
+        "verdict": "NotExploitable",
+        "preconditions": [],
+        "attempts": 0,
+        "evidence": {
+          "reason": "input_not_reachable"
+        }
+      }
+    ]
+  },
+  "score": {
+    "sample": "060_merecat_C1bI3S3",
+    "verdict_correct": true,
+    "preconditions_correct": true,
+    "precondition_recall": 1.0,
+    "precondition_precision": 1.0,
+    "predicted_c_axis": "C1b",
+    "expected_c_axis": "C1b",
+    "predicted_s_axis": "S3",
+    "expected_s_axis": "S3",
+    "predicted_i_axis": "I3",
+    "expected_i_axis": "I3",
+    "false_exploitable": false,
+    "false_not_exploitable": false,
+    "gave_up": false,
+    "match_details": {
+      "matched": [
+        {
+          "configuration_type": "flag",
+          "configuration_parameter": "--exec-mode",
+          "configuration_value": null,
+          "sense": "present"
+        },
+        {
+          "configuration_type": "flag",
+          "configuration_parameter": "--exec-logging",
+          "configuration_value": null,
+          "sense": "present"
+        },
+        {
+          "configuration_type": "flag",
+          "configuration_parameter": "--strict-exec",
+          "configuration_value": null,
+          "sense": "absent"
+        }
+      ],
+      "unmatched": [],
+      "extra": [],
+      "recall": 1.0,
+      "precision": 1.0
+    },
+    "predicted_verdict": "Exploitable",
+    "duration_s": null,
+    "expected_verdict": "Exploitable"
+  },
+  "log_path": "/home/ubuntu/anthropic/agent/eval_results/logs/060_merecat_C1bI3S3.log"
+}

@@ -1,0 +1,29 @@
+{
+  "sample": "099_ulfius_C1cI3S1",
+  "axes": {
+    "C": "C1c",
+    "I": "I3",
+    "S": "S1"
+  },
+  "verified": "Exploitable",
+  "preconditions": [
+    {
+      "configuration_type": "flag",
+      "configuration_parameter": "--enable-exec",
+      "configuration_value": null,
+      "sense": "present"
+    },
+    {
+      "configuration_type": "flag",
+      "configuration_parameter": "--enable-diag",
+      "configuration_value": null,
+      "sense": "present"
+    },
+    {
+      "configuration_type": "flag",
+      "configuration_parameter": "--enable-api",
+      "configuration_value": null,
+      "sense": "present"
+    }
+  ]
+}

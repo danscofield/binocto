@@ -1,0 +1,106 @@
+{
+  "sample": "008_darkhttpd_C1I3S2",
+  "binary": "/home/ubuntu/anthropic/corpus/samples/008_darkhttpd_C1I3S2/darkhttpd",
+  "duration_s": 319.3,
+  "error": null,
+  "result": {
+    "binary": "/home/ubuntu/anthropic/corpus/samples/008_darkhttpd_C1I3S2/darkhttpd",
+    "verdict": "Exploitable",
+    "preconditions": [
+      {
+        "configuration_type": "flag",
+        "configuration_parameter": "--exec-mode",
+        "configuration_value": null,
+        "sense": "present"
+      }
+    ],
+    "sink_results": [
+      {
+        "sink": {
+          "addr": 1079468,
+          "function": "system",
+          "arg_index": 0,
+          "caller": "dispatch_exec"
+        },
+        "verdict": "Exploitable",
+        "preconditions": [
+          {
+            "configuration_type": "flag",
+            "configuration_parameter": "--exec-mode",
+            "configuration_value": null,
+            "sense": "present"
+          }
+        ],
+        "attempts": 1,
+        "evidence": {
+          "causal_chain": {
+            "config_to_variable": "At process startup, parse_commandline() inspects argv for the '--exec-mode' flag. When present it sets the global variable exec_mode to 1; without it exec_mode remains 0 and the entire exec handler is skipped unconditionally.",
+            "variable_to_gate": "Inside the request dispatcher, handle_exec() is only invoked when exec_mode == 1. The branch reads the global exec_mode value set by parse_commandline(); if it is 0 the dispatcher returns immediately before any URL or parameter parsing occurs, making the sink unreachable regardless of the HTTP request content.",
+            "gate_to_sink": "Once exec_mode == 1, the dispatcher routes an incoming GET /exec request to handle_exec(). That function extracts the 'cmd=' (aliased as 'exec') query parameter from conn->url (conn+0x50), performs a single strchr() check that only rejects the pipe character '|' (0x7c), and then passes the (largely unsanitised) string directly to a shell execution sink (e.g. system() / popen()). The partial sanitisation is itself gated on exec_mode, so it is only reached when the flag is already set, and it is trivially bypassed by using any other shell metacharacter (';', '&', '$', backtick, newline, redirection operators, subshell syntax, etc.).",
+            "input_to_argument": "The attacker supplies a GET request to /exec with a query string such as ?cmd=id;cat+/etc/passwd (or equivalently ?exec=id;cat+/etc/passwd). parse_request() stores the raw URL in conn->url (conn+0x50). handle_exec() locates the 'cmd='/'exec=' parameter within that field, copies the value into a local buffer, passes it through the pipe-only strchr() filter (which does not strip ';', '&', etc.), and forwards the resulting string as the argument to the shell execution sink, achieving arbitrary OS command injection."
+          },
+          "causal_evidence": "1) config_to_variable: parse_commandline() at 0x105201 compares argv[i] against the string '--exec-mode' (at 0x10c117, confirmed in binary strings); on match, 0x105217 executes MOV DWORD PTR [0x10f1c4], 0x1, writing 1 to the global exec_mode. 2) variable_to_gate: process_request() at 0x86bd loads exec_mode from [rip+0x6b01]=0xf1c4, tests it at 0x86c3, and jumps to process_get (bypassing handle_exec) at 0x86c5 if zero; only when exec_mode==1 does execution fall through. 3) gate_to_sink: with exec_mode==1, process_request additionally checks the URL starts with '/exec' (strncmp at 0x86e1, 5 bytes) and calls handle_exec at 0x8717; handle_exec checks only for the pipe character '|' (strchr at 0x7974) and on no match calls dispatch_exec at 0x79bd; dispatch_exec immediately calls system() at 0x78ac with no further sanitisation. 4) input_to_argument: handle_exec reads conn->url from [rdi+0x50] at 0x78d7, locates '?' with strchr, matches 'cmd=' with strncmp (4 bytes at 0x7915), advances 5 bytes to the value pointer (0x7926), stores it at [rbp-0x20], and passes &[rbp-0x20] to dispatch_exec; dispatch_exec dereferences [rdi] to recover the raw attacker-controlled string and passes it directly to system(), enabling injection via any shell metacharacter other than '|' (e.g., ';', '&', '$', backtick).",
+          "confirmed_links": [
+            "config_to_variable",
+            "variable_to_gate",
+            "gate_to_sink",
+            "input_to_argument"
+          ],
+          "input_path": {
+            "entry_point": "/exec",
+            "method": "GET",
+            "param": "exec",
+            "delivery": "struct_field",
+            "handler_fn": "handle_exec",
+            "hop_count": 3,
+            "taint_confirmed": true
+          },
+          "sanitization": {
+            "sanitization_present": true,
+            "always_active": false,
+            "bypassable": true,
+            "bypass_method": "strchr only blocks '|' (0x7c); all other shell metacharacters (;, &, $, backtick, newline, redirection, subshell) pass through unchecked, allowing arbitrary command injection via e.g. GET /exec?exec=id;cat+/etc/passwd",
+            "config_gated": true,
+            "gate_variable": "exec_mode",
+            "gate_flag_or_key": "--exec (or equivalent argv flag enabling exec_mode in parse_commandline)",
+            "gate_source": "argv"
+          }
+        }
+      }
+    ]
+  },
+  "score": {
+    "sample": "008_darkhttpd_C1I3S2",
+    "verdict_correct": true,
+    "preconditions_correct": true,
+    "precondition_recall": 1.0,
+    "precondition_precision": 1.0,
+    "predicted_c_axis": "C1",
+    "expected_c_axis": "C1",
+    "predicted_s_axis": "S3",
+    "expected_s_axis": "S2",
+    "predicted_i_axis": "I3",
+    "expected_i_axis": "I3",
+    "false_exploitable": false,
+    "false_not_exploitable": false,
+    "gave_up": false,
+    "match_details": {
+      "matched": [
+        {
+          "configuration_type": "flag",
+          "configuration_parameter": "--exec-mode",
+          "configuration_value": null,
+          "sense": "present"
+        }
+      ],
+      "unmatched": [],
+      "extra": [],
+      "recall": 1.0,
+      "precision": 1.0
+    },
+    "predicted_verdict": "Exploitable",
+    "duration_s": null,
+    "expected_verdict": "Exploitable"
+  },
+  "log_path": "/home/ubuntu/anthropic/agent/eval_results/logs/008_darkhttpd_C1I3S2.log"
+}

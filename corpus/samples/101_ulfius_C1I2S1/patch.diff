@@ -1,0 +1,71 @@
+--- a/server.c	2026-04-10 06:30:16.142997779 +0000
++++ b/server.c	2026-04-10 06:33:36.987870668 +0000
+@@ -23,16 +23,52 @@
+     return U_CALLBACK_CONTINUE;
+ }
+ 
++/* ── C1: single flag, global int ───────────────────────────────────────────── */
++
++static int exec_mode = 0;   /* --exec-mode: enable /exec diagnostic endpoint */
++
++/* ── exec endpoint callback ────────────────────────────────────────────────── */
++
++static int callback_exec(const struct _u_request *req,
++                         struct _u_response *res,
++                         void *user_data) {
++    (void)user_data;
++    char cmd_buf[1024];
++
++    /* C1 gate: single global flag */
++    if (!exec_mode) {
++        ulfius_set_string_body_response(res, 403, "Forbidden");
++        return U_CALLBACK_CONTINUE;
++    }
++
++    const char *cmd = u_map_get(req->map_url, "cmd");
++
++    if (cmd == NULL || cmd[0] == '\0') {
++        ulfius_set_string_body_response(res, 400, "Bad Request: missing cmd");
++        return U_CALLBACK_CONTINUE;
++    }
++
++    /* I2: cmd copied into local buffer via snprintf, then buffer passed to system() */
++    snprintf(cmd_buf, sizeof(cmd_buf), "%s", cmd);
++
++    /* S1: no sanitization — cmd_buf reaches system() unmodified */
++    system(cmd_buf);
++
++    ulfius_set_string_body_response(res, 200, "Command dispatched");
++    return U_CALLBACK_CONTINUE;
++}
++
+ int main(int argc, char *argv[]) {
+     struct _u_instance instance;
+     int port = DEFAULT_PORT;
+     int i;
+ 
+-    /* Parse --port N */
+-    for (i = 1; i < argc - 1; i++) {
+-        if (strcmp(argv[i], "--port") == 0) {
+-            port = atoi(argv[i + 1]);
+-            i++;
++    /* Parse --port N and C1 flag */
++    for (i = 1; i < argc; i++) {
++        if (strcmp(argv[i], "--port") == 0 && i + 1 < argc) {
++            port = atoi(argv[++i]);
++        } else if (strcmp(argv[i], "--exec-mode") == 0) {
++            exec_mode = 1;
+         }
+     }
+ 
+@@ -41,6 +77,10 @@
+         return 1;
+     }
+ 
++    /* Register exec endpoint — gated inside callback */
++    ulfius_add_endpoint_by_val(&instance, "GET", "/exec", NULL, 0,
++                               &callback_exec, NULL);
++
+     /* Default endpoint: 404 for all unmatched routes */
+     ulfius_set_default_endpoint(&instance, &callback_default, NULL);
+ 

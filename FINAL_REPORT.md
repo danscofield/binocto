@@ -1,0 +1,33 @@
+# Final Report — Agentic Binary Vulnerability Analysis
+
+## Motivation for Design Choices
+
+The core challenge is one that classical tools cannot solve: determining which *runtime configuration* an attacker needs to supply before a known dangerous sink becomes reachable. Static analysis finds sinks but cannot reason counterfactually about configuration. Symbolic execution traces paths but explodes combinatorially and has no model of what `argv` or a config file *means*. Neither tool composes across abstraction layers; a vulnerability that requires a CLI flag to set a global, tested by a dispatcher, invoked by a handler, that passes HTTP input to `system()` is invisible to any single-pass tool.
+
+The design choice was to structure the problem as a four-link causal chain — *config→variable→gate→sink→input* — and give a language model targeted binary-analysis tools (Joern CPG for cross-function static queries, angr for symbolic causal verification) to answer each link in turn. LangGraph was chosen for orchestration because the per-sink fan-out, iterative hypothesis revision, and early-exit logic are expressed cleanly as a typed state machine with `Send`-based parallelism. The agent never sees the C/I/S taxonomy labels; it reasons about mechanisms and produces typed `ConfigurationOption` objects that the scoring layer classifies independently.
+
+## Testing and Validation Approach
+
+The evaluation corpus was constructed first: 188 pre-compiled binaries from 15 real open-source HTTP servers (darkhttpd, lighttpd, civetweb, lwan, h2o, kore, libwebsockets, and others), each patched with a synthetic command-injection vulnerability varying independently along three axes — configuration gate complexity (C1–C3), input indirection depth (I1–I3), and sanitization (S1–S3). Every sample has a verified PoC exploit and a negative control (gate disabled → endpoint returns 404), and a `ground_truth.json` with the exact preconditions required for exploitability.
+
+Scoring is fully automated: verdict accuracy (Exploitable / NotExploitable / Inconclusive), precondition recall and precision against ground truth, and per-axis classification accuracy. The evaluation harness runs samples in parallel with result caching so individual samples can be re-run without repeating the full corpus. A `--rescore` flag allows re-running the scoring logic against cached agent outputs when the scorer changes, separating evaluation engineering from agent runs.
+
+Prompt changes were validated by rescoring the full cached result set before launching new agent runs, and ground truth was audited by cross-checking expected flag names against binary string tables and PoC scripts — which identified ~35 ground truth files where template flag names had not been compiled into the corresponding binaries.
+
+## Areas for Improvement
+
+**Short-option flag recovery.** The kore server uses single-character getopt flags (`-A`, `-B`, `-C`). These are not findable with `strings(1)` — they live as characters inside the `getopt()` option string argument in assembly. The agent needs a tool or analysis pass that reads the `getopt` call's opstring to map short flags to their variables. Both kore samples in the test set timed out as Inconclusive.
+
+**S-axis and I-axis accuracy on cached results.** Sanitization evidence (bypassable, config-gated) and input path hop counts are stored in `SinkResult.evidence` only in results generated after the relevant agent changes. Cached results from earlier runs do not have this data, so S-axis and I-axis accuracy is artificially low on the current result set; a clean full-corpus run is needed for a true baseline.
+
+**Upstream gate tracing at depth.** The causal verify loop is capped at three attempts. For binaries where the gate variable is set three or more call frames above the sink, the agent sometimes fails to trace far enough up the call stack. More aggressive caller-chain traversal — or a dedicated "find the root setter of this variable" analysis pass — would improve C2/C3 recall.
+
+**Real-world binaries.** The corpus uses synthetic patches on real servers, but the vulnerabilities are intentionally structured. Production binaries have unintentional, organic vulnerability patterns, stripped symbols, compiler-inlined functions, and deeply non-linear control flow. The agent's current toolset is well-suited to the corpus design but has not been evaluated on unmodified real-world targets.
+
+**Moving beyond command injection.** Command injection was chosen as the starting point precisely because it is well-understood and tractable: the sink is unambiguous (`system()`/`popen()`), exploitability is binary and mechanically verifiable, and the causal chain from configuration to sink to input is short enough to validate end-to-end. The intent was never to build a command-injection detector. It was to use command injection as a controlled proving ground to develop the causal reasoning machinery — config→variable→gate→sink→input — that applies to the full range of memory-safety and logic vulnerabilities. The natural next targets are heap corruption (use-after-free, buffer overflow) where the "reachability" question is the same but the sink is a write or free rather than an exec, and authentication-bypass or privilege-escalation classes where the gate logic is the vulnerability itself rather than a guard in front of it. The four-link causal model generalises; the corpus and tooling were the scaffolding to prove it works before applying it to problems where ground truth is harder to construct and exploitability is harder to verify.
+
+## Additional Commentary
+
+The corpus was itself built using the same agentic approach it evaluates. Twenty-one Claude agents — fifteen in the first wave (one per server, C1/C1b/C1c variants) and six in the second (C2/C3 variants) — read real server source trees, wrote patches, compiled binaries, ran exploits, verified negative controls, and produced 940 structured artifacts in approximately 65 minutes. This was both a practical necessity (building 188 manually verified samples by hand would have taken weeks) and a demonstration of the point: compositional reasoning across real codebases, at scale, is what agentic AI makes tractable.
+
+One non-obvious lesson from the build process was the value of keeping the scoring taxonomy entirely outside the agent. The C/I/S axis labels are inferred post-hoc from the agent's typed output — the agent never sees them. This separation meant the scoring logic could be changed and the axis definitions refined without touching the agent at all, and it meant the agent's reasoning was never anchored to a classification scheme that might not match what it actually finds in the binary.

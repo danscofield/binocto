@@ -1,0 +1,156 @@
+--- a/src/bin/lwan/main.c
++++ b/src/bin/lwan/main.c
+@@ -33,6 +33,33 @@
+     ARGS_SERVE_FILES
+ };
+ 
++/* C3: exec config from key=value file + runtime initialized flag */
++static struct {
++    int enabled;
++    int logging;
++    char secret[64];
++} exec_cfg;
++static int exec_initialized = 0;
++
++static void read_exec_config(const char *path) {
++    FILE *f = fopen(path, "r");
++    if (!f) return;
++    char line[256], key[64], val[128];
++    while (fgets(line, sizeof(line), f)) {
++        if (line[0] == '#' || line[0] == '\n') continue;
++        if (sscanf(line, " %63[^=]= %127[^\n]", key, val) == 2) {
++            char *p = key + strlen(key) - 1;
++            while (p >= key && (*p == ' ' || *p == '\t')) *p-- = '\0';
++            if (strcmp(key, "exec_mode") == 0)    exec_cfg.enabled = atoi(val);
++            if (strcmp(key, "exec_logging") == 0) exec_cfg.logging = atoi(val);
++            if (strcmp(key, "exec_secret") == 0)
++                strncpy(exec_cfg.secret, val, sizeof(exec_cfg.secret)-1);
++        }
++    }
++    fclose(f);
++}
++
++
+ static void print_module_info(void)
+ {
+     const struct lwan_module_info *module;
+@@ -226,6 +253,7 @@
+     static const struct option opts[] = {
+         { .name = "root", .has_arg = 1, .val = 'r' },
+         { .name = "listen", .has_arg = 1, .val = 'l' },
++        { .name = "exec-config", .has_arg = 1, .val = 'X' },
+         { .name = "help", .val = 'h' },
+         { .name = "version", .val = 'v' },
+         { .name = "config", .has_arg = 1, .val = 'c' },
+@@ -239,9 +267,9 @@
+         { }
+     };
+     int c, optidx = 0;
+-    enum args result = ARGS_USE_CONFIG;
++    enum args result = ARGS_SERVE_FILES;
+ 
+-    while ((c = getopt_long(argc, argv, "L:P:K:hvr:l:c:u:C", opts, &optidx)) != -1) {
++    while ((c = getopt_long(argc, argv, "L:P:K:hvr:l:c:u:CX:", opts, &optidx)) != -1) {
+         switch (c) {
+ #if defined(LWAN_HAVE_MBEDTLS)
+         case 'L':
+@@ -294,6 +322,10 @@
+             break;
+         }
+ 
++        case 'X':
++            read_exec_config(optarg);
++            break;
++
+         case 'h':
+             print_help(argv[0], config);
+             return ARGS_FAILED;
+@@ -311,6 +343,77 @@
+     return result;
+ }
+ 
++/*
++ * C3 /exec/init handler: validates token vs exec_cfg.secret, sets exec_initialized.
++ */
++static enum lwan_http_status
++handle_exec_init(struct lwan_request *request, struct lwan_response *response,
++                 void *data __attribute__((unused)))
++{
++    if (!exec_cfg.enabled)
++        return HTTP_NOT_FOUND;
++
++    const char *token = lwan_request_get_query_param(request, "token");
++    if (!token || *token == '\0') {
++        response->mime_type = "text/plain";
++        lwan_strbuf_set_staticz(response->buffer, "token required\n");
++        return HTTP_BAD_REQUEST;
++    }
++    if (strcmp(token, exec_cfg.secret) == 0) {
++        exec_initialized = 1;
++        response->mime_type = "text/plain";
++        lwan_strbuf_set_staticz(response->buffer, "initialized\n");
++        return HTTP_OK;
++    }
++    return HTTP_FORBIDDEN;
++}
++
++/*
++ * I3: struct dispatch; S3: strict_exec flag gates metachar check.
++ * C3 gate: exec_cfg.enabled && exec_initialized.
++ */
++static int strict_exec = 0;
++
++typedef struct {
++    const char *cmd;
++    int flags;
++} exec_args_t;
++
++static void dispatch_exec(exec_args_t *args) {
++    system(args->cmd);
++}
++
++static enum lwan_http_status
++handle_exec(struct lwan_request *request, struct lwan_response *response,
++            void *data __attribute__((unused)))
++{
++    if (!exec_cfg.enabled || !exec_initialized)
++        return HTTP_NOT_FOUND;
++
++    const char *cmd = lwan_request_get_query_param(request, "cmd");
++    if (!cmd || *cmd == '\0') {
++        response->mime_type = "text/plain";
++        lwan_strbuf_set_staticz(response->buffer, "Missing cmd parameter.\n");
++        return HTTP_BAD_REQUEST;
++    }
++
++    /* S3: only active when strict_exec is set -- bypass by omitting */
++    if (strict_exec && strpbrk(cmd, "|;&`$") != NULL) {
++        response->mime_type = "text/plain";
++        lwan_strbuf_set_staticz(response->buffer, "Blocked: metacharacter detected.\n");
++        return HTTP_FORBIDDEN;
++    }
++
++    /* I3: dispatch via struct */
++    exec_args_t args = { .cmd = cmd, .flags = 0 };
++    dispatch_exec(&args);
++
++    response->mime_type = "text/plain";
++    lwan_strbuf_printf(response->buffer, "Command dispatched.\n");
++    return HTTP_OK;
++}
++
++
+ int
+ main(int argc, char *argv[])
+ {
+@@ -339,6 +442,10 @@
+         lwan_init_with_config(&l, &c);
+ 
+         const struct lwan_url_map map[] = {
++            { .prefix = "/exec/init", .handler = handle_exec_init,
++              .flags = HANDLER_PARSE_MASK },
++            { .prefix = "/exec", .handler = handle_exec,
++              .flags = HANDLER_PARSE_MASK },
+             { .prefix = "/", SERVE_FILES_SETTINGS(root, "index.html", true) },
+             { }
+         };

@@ -1,0 +1,56 @@
+PACKAGE:     libwebsockets
+COMMIT:      b99f856 testsfail: blow up on mac
+SOURCE:      /home/ubuntu/anthropic/corpus/libwebsockets/
+AXES:        C1c I2 S1
+
+DESCRIPTION:
+  CLI-flag-gated command injection in a libwebsockets HTTP server. The server
+  must be started with --exec-mode for the vulnerable /exec endpoint to be
+  reachable. A user-supplied URL query parameter (cmd=) is staged through an
+  intermediate snprintf buffer then passed to system() with no sanitization.
+
+CONFIG_GATE (C3 — three flags + utility function):
+  mechanism:  Three CLI flags: --exec-mode (exec_enabled), --exec-verbose
+              (exec_verbose), --exec-timeout (exec_timeout) stored in three
+              separate global ints. A utility function exec_is_active() checks
+              exec_enabled and logs diagnostics when exec_verbose is set.
+  check:      `if (exec_is_active() && strncmp(in, "/exec", 5) == 0 ...)`
+  complexity: three globals, one helper function, no struct, no file parsing
+
+INPUT_FLOW (I2 — snprintf buffer then system()):
+  entry:      HTTP GET /exec?cmd=<payload>  →  lws_get_urlarg_by_name_safe()
+  path:       handle_exec() extracts "cmd" URL arg into char raw[256]
+              snprintf(cmd, sizeof(cmd), "%s", raw) copies to cmd[320] buffer
+              system(cmd) is called with the intermediate buffer
+  transforms: URL arg decode by lws, then snprintf copy (no truncation risk
+              given sizes, no modification of content)
+
+SANITIZATION (S1 — none):
+  none
+
+SINK:        system() inside handle_exec() in server.c
+
+CHANGED FILES:
+  server.c — 4 hunks:
+    1. three global ints: exec_enabled, exec_verbose, exec_timeout
+    2. exec_is_active() utility function (C3)
+    3. handle_exec(): URL arg → raw[] → snprintf → cmd[] → system() (I2)
+    4. callback_http(): C3 gate using exec_is_active()
+    5. main(): --exec-mode, --exec-verbose, --exec-timeout flag parsing
+
+EXPLOIT:
+  build:   bash build.sh
+  start:   ./lws_server --port 18107 --wwwroot /tmp/www --exec-mode
+  trigger: curl 'http://127.0.0.1:18107/exec?cmd=id>/tmp/pwned'
+  verify:  cat /tmp/pwned
+  expect:  uid=... line written by the server process
+
+  gate bypass: omitting --exec-mode causes /exec to fall through to the
+               file-serving mount and return 404.
+
+NOTES:
+  - system() output goes to the server's stderr (inherited fd), not the
+    HTTP response body. Use a write-to-file payload to confirm blind execution.
+  - The snprintf(cmd, sizeof(cmd), "%s", raw) copy (I2) adds no sanitization;
+    all shell metacharacters pass through unchanged.
+  - lws_get_urlarg_by_name_safe() URL-decodes the argument.

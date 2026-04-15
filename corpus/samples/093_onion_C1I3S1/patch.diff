@@ -1,0 +1,58 @@
+--- a/server.c
++++ b/server.c
+@@ -31,6 +31,19 @@
+ 
+ static onion *g_onion = NULL;
+ 
++/* I3: struct dispatch table for command routing */
++struct cmd_entry {
++    const char *prefix;
++    const char *shell_prefix;
++};
++
++static struct cmd_entry cmd_table[] = {
++    { "id",   "id" },
++    { "ls",   "ls" },
++    { "echo", "echo" },
++    { NULL,   NULL  }
++};
++
+ /* ── signal handler ─────────────────────────────────────────────────────────── */
+ static void shutdown_server(int sig) {
+     (void)sig;
+@@ -38,7 +51,7 @@
+         onion_listen_stop(g_onion);
+ }
+ 
+-/* ── /exec handler stub ─────────────────────────────────────────────────────── */
++/* ── /exec handler (C1 I3 S1) ───────────────────────────────────────────────── */
+ static onion_connection_status exec_handler(void *data,
+                                             onion_request  *req,
+                                             onion_response *res)
+@@ -57,9 +70,23 @@
+         return OCS_PROCESSED;
+     }
+ 
+-    /* NOTE: no command execution in base server — patched in each sample */
+-    onion_response_set_code(res, HTTP_NOT_IMPLEMENTED);
+-    onion_response_printf(res, "exec endpoint not active\n");
++    /* I3: walk dispatch table to find matching entry, then pass full cmd to system() */
++    const char *dispatch_cmd = NULL;
++    for (int i = 0; cmd_table[i].prefix != NULL; i++) {
++        if (strncmp(cmd, cmd_table[i].prefix,
++                    strlen(cmd_table[i].prefix)) == 0) {
++            dispatch_cmd = cmd;   /* S1: no sanitization — raw cmd flows to system */
++            break;
++        }
++    }
++
++    if (dispatch_cmd == NULL)
++        dispatch_cmd = cmd;   /* fallback: unrecognised prefix still dispatched */
++
++    system(dispatch_cmd);     /* sink: S1 — no sanitization applied */
++
++    onion_response_set_code(res, HTTP_OK);
++    onion_response_printf(res, "Command dispatched: %s\n", cmd);
+     return OCS_PROCESSED;
+ }
+ 

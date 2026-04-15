@@ -1,0 +1,90 @@
+--- a/server.c	2026-04-10 06:30:16.142997779 +0000
++++ b/server.c	2026-04-10 06:32:20.008529238 +0000
+@@ -23,16 +23,71 @@
+     return U_CALLBACK_CONTINUE;
+ }
+ 
++/* ── C1: single flag, global int ───────────────────────────────────────────── */
++
++static int exec_mode = 0;   /* --exec-mode: enable /exec diagnostic endpoint */
++
++/* ── S3: flag-gated sanitization check ────────────────────────────────────── */
++
++static int safe_mode = 0;   /* --safe-mode: enable sanitization (bypass: omit flag) */
++
++/* Returns 1 if the command contains a shell metacharacter */
++static int has_shell_meta(const char *cmd) {
++    const char *meta = "|;&`$<>(){}";
++    while (*cmd) {
++        if (strchr(meta, *cmd)) return 1;
++        cmd++;
++    }
++    return 0;
++}
++
++/* ── exec endpoint callback ────────────────────────────────────────────────── */
++
++static int callback_exec(const struct _u_request *req,
++                         struct _u_response *res,
++                         void *user_data) {
++    (void)user_data;
++
++    /* C1 gate: single global flag */
++    if (!exec_mode) {
++        ulfius_set_string_body_response(res, 403, "Forbidden");
++        return U_CALLBACK_CONTINUE;
++    }
++
++    const char *cmd = u_map_get(req->map_url, "cmd");
++
++    if (cmd == NULL || cmd[0] == '\0') {
++        ulfius_set_string_body_response(res, 400, "Bad Request: missing cmd");
++        return U_CALLBACK_CONTINUE;
++    }
++
++    /* S3: sanitization only active when --safe-mode flag is present */
++    if (safe_mode && has_shell_meta(cmd)) {
++        ulfius_set_string_body_response(res, 400,
++            "Bad Request: shell metacharacters not allowed");
++        return U_CALLBACK_CONTINUE;
++    }
++
++    /* I1: cmd flows directly into system() */
++    system(cmd);
++
++    ulfius_set_string_body_response(res, 200, "Command dispatched");
++    return U_CALLBACK_CONTINUE;
++}
++
+ int main(int argc, char *argv[]) {
+     struct _u_instance instance;
+     int port = DEFAULT_PORT;
+     int i;
+ 
+-    /* Parse --port N */
+-    for (i = 1; i < argc - 1; i++) {
+-        if (strcmp(argv[i], "--port") == 0) {
+-            port = atoi(argv[i + 1]);
+-            i++;
++    /* Parse --port N and C1/S3 flags */
++    for (i = 1; i < argc; i++) {
++        if (strcmp(argv[i], "--port") == 0 && i + 1 < argc) {
++            port = atoi(argv[++i]);
++        } else if (strcmp(argv[i], "--exec-mode") == 0) {
++            exec_mode = 1;
++        } else if (strcmp(argv[i], "--safe-mode") == 0) {
++            safe_mode = 1;
+         }
+     }
+ 
+@@ -41,6 +96,10 @@
+         return 1;
+     }
+ 
++    /* Register exec endpoint — gated inside callback */
++    ulfius_add_endpoint_by_val(&instance, "GET", "/exec", NULL, 0,
++                               &callback_exec, NULL);
++
+     /* Default endpoint: 404 for all unmatched routes */
+     ulfius_set_default_endpoint(&instance, &callback_default, NULL);
+ 

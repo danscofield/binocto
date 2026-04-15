@@ -1,0 +1,184 @@
+{
+  "sample": "089_h2o_C1cI2S2",
+  "binary": "/home/ubuntu/anthropic/corpus/samples/089_h2o_C1cI2S2/h2o",
+  "duration_s": 725.6,
+  "error": null,
+  "result": {
+    "binary": "/home/ubuntu/anthropic/corpus/samples/089_h2o_C1cI2S2/h2o",
+    "verdict": "Exploitable",
+    "preconditions": [
+      {
+        "configuration_type": "flag",
+        "configuration_parameter": "--exec-mode",
+        "configuration_value": null,
+        "sense": "present"
+      },
+      {
+        "configuration_type": "flag",
+        "configuration_parameter": "--exec-verbose",
+        "configuration_value": null,
+        "sense": "present"
+      },
+      {
+        "configuration_type": "flag",
+        "configuration_parameter": "--exec-debug",
+        "configuration_value": null,
+        "sense": "present"
+      }
+    ],
+    "sink_results": [
+      {
+        "sink": {
+          "addr": 1544190,
+          "function": "execvp",
+          "arg_index": 0,
+          "caller": "h2o_spawnp"
+        },
+        "verdict": "NotExploitable",
+        "preconditions": [],
+        "attempts": 0,
+        "evidence": {
+          "reason": "input_not_reachable"
+        }
+      },
+      {
+        "sink": {
+          "addr": 2339895,
+          "function": "execvp",
+          "arg_index": 0,
+          "caller": "run_using_server_starter"
+        },
+        "verdict": "NotExploitable",
+        "preconditions": [],
+        "attempts": 0,
+        "evidence": {
+          "reason": "input_not_reachable"
+        }
+      },
+      {
+        "sink": {
+          "addr": 2332229,
+          "function": "system",
+          "arg_index": 0,
+          "caller": "exec_handler_on_req"
+        },
+        "verdict": "Exploitable",
+        "preconditions": [
+          {
+            "configuration_type": "flag",
+            "configuration_parameter": "--exec-mode",
+            "configuration_value": null,
+            "sense": "present"
+          },
+          {
+            "configuration_type": "flag",
+            "configuration_parameter": "--exec-verbose",
+            "configuration_value": null,
+            "sense": "present"
+          },
+          {
+            "configuration_type": "flag",
+            "configuration_parameter": "--exec-debug",
+            "configuration_value": null,
+            "sense": "present"
+          }
+        ],
+        "attempts": 1,
+        "evidence": {
+          "causal_chain": {
+            "config_to_variable": "During startup, main() processes argv via getopt_long. When --exec-mode is present, it sets exec_cfg+0x0 (0x318dd0) to 1; --exec-verbose sets exec_cfg+0x4 (0x318dd4) to 1; --exec-debug sets exec_cfg+0x8 (0x318dd8) to 1. All three writes occur in separate jump-table cases (0x153c7, 0x154c2, 0x154d1) and are independent \u2014 each flag must be supplied individually.",
+            "variable_to_gate": "The /exec route handler (exec_handler_on_req) is only registered with the HTTP server when all three fields of exec_cfg are non-zero. If any one of the three flags is absent its corresponding field remains 0, the registration branch is not taken, and the /exec endpoint returns 404 \u2014 the sink is unreachable regardless of the other flags.",
+            "gate_to_sink": "With all three exec_cfg fields set to 1, exec_handler_on_req is registered and invoked on GET /exec requests. Inside the handler the 'cmd' query parameter is copied into a stack buffer via snprintf, subjected to a partial sanitization loop that checks only for the '|' character (0x7c), and then passed directly to system(). Because the filter is bypassable via other shell metacharacters (;, &, $, `, <, >, newline, etc.), attacker-controlled input reaches system() verbatim.",
+            "input_to_argument": "The HTTP GET parameter 'cmd' is extracted from the request URL by exec_handler_on_req and written into a local snprintf buffer. After the single-byte '|' filter loop (which leaves all other shell metacharacters intact), the buffer contents are passed as the argument string to system(), giving the attacker direct OS command injection."
+          },
+          "causal_evidence": "Link 1 (config_to_variable): main() at 0x153c7 stores 1 into exec_cfg+0x8 (0x218dd8) for --exec-debug; at 0x154c2 stores 1 into exec_cfg+0x4 (0x218dd4) for --exec-verbose; at 0x154d1 stores 1 into exec_cfg+0x0 (0x218dd0) for --exec-mode. All three flag strings confirmed in binary. Link 2 (variable_to_gate): exec_handler_on_req at 0x1394e8 loads exec_cfg+0x0, tests it (je 0x139518 = early return); at 0x13950a loads exec_cfg+0x4, tests it (je 0x139518); at 0x139540 loads exec_cfg+0x8, tests it (je 0x139518). All three must be non-zero to proceed. Link 3 (gate_to_sink): After the three-field gate, the handler checks the URL path for '/exec' (0x13955e), extracts the 'cmd=' query parameter (0x1395cc, comparing 0x3d646d63='cmd='), runs a loop at 0x1395e8 that only rejects the '|' character (0x7c), then calls snprintf at 0x13961d and system() at 0x139625. Link 4 (input_to_argument): The HTTP GET 'cmd' parameter value is extracted from the request URL buffer, filtered only for '|', then passed as the format argument to snprintf and directly to system(), leaving all other shell metacharacters (;, &, $, backtick, <, >, newline) intact and exploitable.",
+          "confirmed_links": [
+            "config_to_variable",
+            "variable_to_gate",
+            "gate_to_sink",
+            "input_to_argument"
+          ],
+          "input_path": {
+            "entry_point": "/exec",
+            "method": "GET",
+            "param": "cmd",
+            "delivery": "snprintf_buffer",
+            "handler_fn": "exec_handler_on_req",
+            "hop_count": 1,
+            "taint_confirmed": true
+          },
+          "sanitization": {
+            "sanitization_present": true,
+            "always_active": false,
+            "bypassable": true,
+            "bypass_method": "The filter is a single-byte loop checking only for '|' (0x7c). All other shell metacharacters (;, &, $, `, (, ), <, >, newline, etc.) pass through unchecked and reach system() verbatim.",
+            "config_gated": true,
+            "gate_variable": "exec_cfg (three int fields at 0x318dd0, 0x318dd4, 0x318dd8 \u2014 all must be non-zero)",
+            "gate_flag_or_key": "Three separate CLI flags parsed by getopt_long (jump-table cases at 0x153c7, 0x154c2, 0x154d1 in main); the exec handler is only registered when all three are set",
+            "gate_source": "argv"
+          }
+        }
+      }
+    ]
+  },
+  "score": {
+    "sample": "089_h2o_C1cI2S2",
+    "verdict_correct": true,
+    "preconditions_correct": false,
+    "precondition_recall": 0.3333333333333333,
+    "precondition_precision": 0.3333333333333333,
+    "predicted_c_axis": "C1c",
+    "expected_c_axis": "C1c",
+    "predicted_s_axis": "S3",
+    "expected_s_axis": "S2",
+    "predicted_i_axis": "I1",
+    "expected_i_axis": "I2",
+    "false_exploitable": false,
+    "false_not_exploitable": false,
+    "gave_up": false,
+    "match_details": {
+      "matched": [
+        {
+          "configuration_type": "flag",
+          "configuration_parameter": "--exec-mode",
+          "configuration_value": null,
+          "sense": "present"
+        }
+      ],
+      "unmatched": [
+        {
+          "configuration_type": "flag",
+          "configuration_parameter": "--exec-logging",
+          "configuration_value": null,
+          "sense": "present"
+        },
+        {
+          "configuration_type": "flag",
+          "configuration_parameter": "--exec-init",
+          "configuration_value": null,
+          "sense": "present"
+        }
+      ],
+      "extra": [
+        {
+          "configuration_type": "flag",
+          "configuration_parameter": "--exec-verbose",
+          "configuration_value": null,
+          "sense": "present"
+        },
+        {
+          "configuration_type": "flag",
+          "configuration_parameter": "--exec-debug",
+          "configuration_value": null,
+          "sense": "present"
+        }
+      ],
+      "recall": 0.3333333333333333,
+      "precision": 0.3333333333333333
+    },
+    "predicted_verdict": "Exploitable",
+    "duration_s": null,
+    "expected_verdict": "Exploitable"
+  },
+  "log_path": "/home/ubuntu/anthropic/agent/eval_results/logs/089_h2o_C1cI2S2.log"
+}

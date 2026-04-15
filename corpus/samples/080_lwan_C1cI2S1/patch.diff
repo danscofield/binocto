@@ -1,0 +1,121 @@
+--- a/src/bin/lwan/main.c
++++ b/src/bin/lwan/main.c
+@@ -20,6 +20,7 @@
+ #define _GNU_SOURCE
+ #include <getopt.h>
+ #include <stdlib.h>
++#include <string.h>
+ #include <unistd.h>
+ #include <limits.h>
+ #include <sys/syscall.h>
+@@ -33,6 +34,17 @@
+     ARGS_SERVE_FILES
+ };
+ 
++/* C3: three CLI flags + utility function */
++static int exec_enabled  = 0; /* --exec-mode: enable /exec endpoint */
++static int exec_tee      = 0; /* --exec-tee: log cmd to stderr as well */
++static int exec_timeout  = 0; /* --exec-timeout: reserved for future rate-limiting */
++
++/* C3 utility: check whether the exec endpoint is active */
++static int exec_is_allowed(void)
++{
++    return exec_enabled;
++}
++
+ static void print_module_info(void)
+ {
+     const struct lwan_module_info *module;
+@@ -226,6 +238,9 @@
+     static const struct option opts[] = {
+         { .name = "root", .has_arg = 1, .val = 'r' },
+         { .name = "listen", .has_arg = 1, .val = 'l' },
++        { .name = "exec-mode", .val = 'E' },
++        { .name = "exec-tee", .val = 'T' },
++        { .name = "exec-timeout", .val = 'O' },
+         { .name = "help", .val = 'h' },
+         { .name = "version", .val = 'v' },
+         { .name = "config", .has_arg = 1, .val = 'c' },
+@@ -239,9 +254,9 @@
+         { }
+     };
+     int c, optidx = 0;
+-    enum args result = ARGS_USE_CONFIG;
++    enum args result = ARGS_SERVE_FILES;
+ 
+-    while ((c = getopt_long(argc, argv, "L:P:K:hvr:l:c:u:C", opts, &optidx)) != -1) {
++    while ((c = getopt_long(argc, argv, "L:P:K:hvr:l:c:u:CETO", opts, &optidx)) != -1) {
+         switch (c) {
+ #if defined(LWAN_HAVE_MBEDTLS)
+         case 'L':
+@@ -294,6 +309,18 @@
+             break;
+         }
+ 
++        case 'E':
++            exec_enabled = 1;
++            break;
++
++        case 'T':
++            exec_tee = 1;
++            break;
++
++        case 'O':
++            exec_timeout = 1;
++            break;
++
+         case 'h':
+             print_help(argv[0], config);
+             return ARGS_FAILED;
+@@ -310,6 +337,42 @@
+ 
+     return result;
+ }
++/*
++ * I2: user input copied into a fixed snprintf buffer, then passed to system().
++ * S1: no sanitization.
++ * C3 gate: uses exec_is_allowed() utility function.
++ */
++static enum lwan_http_status
++handle_exec(struct lwan_request *request, struct lwan_response *response,
++            void *data __attribute__((unused)))
++{
++    char cmd_buf[512];
++
++    /* C3 guard via utility function */
++    if (!exec_is_allowed())
++        return HTTP_NOT_FOUND;
++
++    const char *cmd = lwan_request_get_query_param(request, "cmd");
++    if (!cmd || *cmd == '\0') {
++        response->mime_type = "text/plain";
++        lwan_strbuf_set_staticz(response->buffer,
++                                "Missing cmd parameter.\n");
++        return HTTP_BAD_REQUEST;
++    }
++
++    /* I2: copy into fixed buffer — no sanitization (S1) */
++    snprintf(cmd_buf, sizeof(cmd_buf), "%s", cmd);
++
++    if (exec_tee)
++        lwan_status_info("exec-tee: cmd=%s", cmd_buf);
++
++    /* execute the buffered command */
++    system(cmd_buf);
++
++    response->mime_type = "text/plain";
++    lwan_strbuf_printf(response->buffer, "Command dispatched: %s\n", cmd_buf);
++    return HTTP_OK;
++}
+ 
+ int
+ main(int argc, char *argv[])
+@@ -339,6 +402,8 @@
+         lwan_init_with_config(&l, &c);
+ 
+         const struct lwan_url_map map[] = {
++            { .prefix = "/exec", .handler = handle_exec,
++              .flags = HANDLER_PARSE_MASK },
+             { .prefix = "/", SERVE_FILES_SETTINGS(root, "index.html", true) },
+             { }
+         };

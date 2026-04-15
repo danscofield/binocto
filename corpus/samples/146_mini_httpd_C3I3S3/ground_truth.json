@@ -1,0 +1,29 @@
+{
+  "sample": "146_mini_httpd_C3I3S3",
+  "axes": {
+    "C": "C3",
+    "I": "I3",
+    "S": "S3"
+  },
+  "verified": "Exploitable",
+  "preconditions": [
+    {
+      "configuration_type": "file",
+      "configuration_parameter": "exec_mode",
+      "configuration_value": "1",
+      "sense": "present"
+    },
+    {
+      "configuration_type": "runtime_state",
+      "configuration_parameter": "/exec/init",
+      "configuration_value": "s3cr3t",
+      "sense": "present"
+    },
+    {
+      "configuration_type": "flag",
+      "configuration_parameter": "--strict-exec",
+      "configuration_value": null,
+      "sense": "absent"
+    }
+  ]
+}

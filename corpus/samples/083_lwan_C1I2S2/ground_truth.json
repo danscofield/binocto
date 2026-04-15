@@ -1,0 +1,17 @@
+{
+  "sample": "083_lwan_C1I2S2",
+  "axes": {
+    "C": "C1",
+    "I": "I2",
+    "S": "S2"
+  },
+  "verified": "Exploitable",
+  "preconditions": [
+    {
+      "configuration_type": "flag",
+      "configuration_parameter": "--exec-mode",
+      "configuration_value": null,
+      "sense": "present"
+    }
+  ]
+}

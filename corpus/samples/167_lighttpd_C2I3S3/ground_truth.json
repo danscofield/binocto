@@ -1,0 +1,23 @@
+{
+  "sample": "167_lighttpd_C2I3S3",
+  "axes": {
+    "C": "C2",
+    "I": "I3",
+    "S": "S3"
+  },
+  "verified": "Exploitable",
+  "preconditions": [
+    {
+      "configuration_type": "file",
+      "configuration_parameter": "exec_mode",
+      "configuration_value": "1",
+      "sense": "present"
+    },
+    {
+      "configuration_type": "file",
+      "configuration_parameter": "exec_logging",
+      "configuration_value": "1",
+      "sense": "present"
+    }
+  ]
+}

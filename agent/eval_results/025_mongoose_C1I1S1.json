@@ -1,0 +1,106 @@
+{
+  "sample": "025_mongoose_C1I1S1",
+  "binary": "/home/ubuntu/anthropic/corpus/samples/025_mongoose_C1I1S1/mongoose_server",
+  "duration_s": 315.2,
+  "error": null,
+  "result": {
+    "binary": "/home/ubuntu/anthropic/corpus/samples/025_mongoose_C1I1S1/mongoose_server",
+    "verdict": "Exploitable",
+    "preconditions": [
+      {
+        "configuration_type": "flag",
+        "configuration_parameter": "--exec-mode",
+        "configuration_value": null,
+        "sense": "present"
+      }
+    ],
+    "sink_results": [
+      {
+        "sink": {
+          "addr": 1059797,
+          "function": "system",
+          "arg_index": 0,
+          "caller": "handle_exec"
+        },
+        "verdict": "Exploitable",
+        "preconditions": [
+          {
+            "configuration_type": "flag",
+            "configuration_parameter": "--exec-mode",
+            "configuration_value": null,
+            "sense": "present"
+          }
+        ],
+        "attempts": 1,
+        "evidence": {
+          "causal_chain": {
+            "config_to_variable": "At process startup, main() parses argv and sets the internal variable exec_mode=1 when the --exec-mode flag is present; without this flag the exec handler registration/dispatch is skipped entirely.",
+            "variable_to_gate": "The dispatcher (fn) checks the incoming request URI against '/exec'; this route is only registered/reachable when exec_mode==1, so the branch guarding handle_exec is only entered when both the flag is set and the URI matches /exec.",
+            "gate_to_sink": "Once the URI check passes and handle_exec is invoked, the function reads the 'cmd' query parameter, copies it into an snprintf buffer, and passes the result directly to system() with no sanitization, making the sink unconditionally reachable from that point.",
+            "input_to_argument": "The attacker supplies an arbitrary OS command string as the value of the 'cmd' HTTP query parameter in a request to /exec (any method); handle_exec extracts this value, formats it into a buffer via snprintf, and passes the buffer as the sole argument to system(), giving the attacker full shell command execution."
+          },
+          "causal_evidence": "main() at 0x2c37 compares argv[i] against the literal string '--exec-mode' (confirmed in binary strings) and at 0x2c4d stores 1 into exec_mode (global at 0x294fc). The dispatcher fn() at 0x2a5c loads exec_mode from 0x294fc, tests it at 0x2a62, and jumps away if zero; when non-zero it matches the URI against '/exec' via mg_match at 0x2a8d and calls handle_exec at 0x2aa4 with no further guards. Inside handle_exec, mg_http_get_var at 0x298f extracts the HTTP 'cmd' query parameter into a 256-byte stack buffer [rbp-0x110]; if the buffer is non-empty (test al,al / jne 0x29cb), execution falls through to 0x29d5 where 'lea rax,[rbp-0x110]; mov rdi,rax; call system@plt' passes the raw, unsanitized attacker-controlled cmd string directly as the sole argument to system(). No sanitization, encoding, or length restriction beyond the 256-byte buffer is applied.",
+          "confirmed_links": [
+            "config_to_variable",
+            "variable_to_gate",
+            "gate_to_sink",
+            "input_to_argument"
+          ],
+          "input_path": {
+            "entry_point": "/exec",
+            "method": "ANY",
+            "param": "cmd",
+            "delivery": "snprintf_buffer",
+            "handler_fn": "handle_exec",
+            "hop_count": 2,
+            "taint_confirmed": true
+          },
+          "sanitization": {
+            "sanitization_present": false,
+            "always_active": false,
+            "bypassable": false,
+            "bypass_method": null,
+            "config_gated": false,
+            "gate_variable": null,
+            "gate_flag_or_key": null,
+            "gate_source": null
+          }
+        }
+      }
+    ]
+  },
+  "score": {
+    "sample": "025_mongoose_C1I1S1",
+    "verdict_correct": true,
+    "preconditions_correct": true,
+    "precondition_recall": 1.0,
+    "precondition_precision": 1.0,
+    "predicted_c_axis": "C1",
+    "expected_c_axis": "C1",
+    "predicted_s_axis": "S1",
+    "expected_s_axis": "S1",
+    "predicted_i_axis": "I2",
+    "expected_i_axis": "I1",
+    "false_exploitable": false,
+    "false_not_exploitable": false,
+    "gave_up": false,
+    "match_details": {
+      "matched": [
+        {
+          "configuration_type": "flag",
+          "configuration_parameter": "--exec-mode",
+          "configuration_value": null,
+          "sense": "present"
+        }
+      ],
+      "unmatched": [],
+      "extra": [],
+      "recall": 1.0,
+      "precision": 1.0
+    },
+    "predicted_verdict": "Exploitable",
+    "duration_s": null,
+    "expected_verdict": "Exploitable"
+  },
+  "log_path": "/home/ubuntu/anthropic/agent/eval_results/logs/025_mongoose_C1I1S1.log"
+}
